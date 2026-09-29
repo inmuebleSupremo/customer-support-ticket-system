@@ -6,11 +6,11 @@ export function AppShell() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto max-w-6xl px-6 py-4">
-          <div className="flex items-center justify-between"><span className="text-lg font-semibold tracking-tight">ResolveDesk</span>{status === 'authenticated' && <button className="text-sm font-medium text-sky-700 underline" onClick={() => void logout()}>Log out {user?.firstName}</button>}</div>
+        <div className="mx-auto max-w-6xl px-4 py-4 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3"><span className="text-lg font-semibold tracking-tight">ResolveDesk</span>{status === 'authenticated' && <button className="text-sm font-medium text-sky-700 underline" onClick={() => void logout()}>Log out {user?.firstName}</button>}</div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl px-6 py-12">
+      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-12">
         <Outlet />
       </main>
     </div>
