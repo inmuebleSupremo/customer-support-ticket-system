@@ -52,7 +52,7 @@ Customers may reopen only a resolved ticket to `IN_PROGRESS`. CLOSED is terminal
 
 ## Local setup
 
-Prerequisites for non-Docker development are Java 21, Maven, Node.js 22, and MySQL 8+. Copy `.env.example` to `.env`, replace placeholder credentials, and expose the values in your shell before starting the backend. The frontend uses the API base configured by `VITE_API_BASE_URL`; leave it blank when using the Compose proxy.
+Prerequisites for non-Docker development are Java 21, Maven, Node.js 22, and MySQL 8+. Copy `.env.example` to `.env`, replace the placeholder credentials, and expose those values in your shell before starting the backend directly. `.env` is ignored by Git and must remain local. The frontend uses the API base configured by `VITE_API_BASE_URL`; leave it blank when using the Compose proxy.
 
 Run the verified commands from the repository root:
 
@@ -68,18 +68,41 @@ For local frontend development, install dependencies with `npm --prefix frontend
 
 ## Docker
 
-Copy the template, replace the placeholder passwords, then start the complete application:
+The normal local startup flow is intentionally explicit:
 
 ```bash
+# macOS/Linux
 cp .env.example .env
+```
+
+```powershell
+# Windows PowerShell
+Copy-Item .env.example .env
+```
+
+Edit `.env`: replace every `change-me` password and set the bootstrap-admin values for a new database. Then run:
+
+```bash
+docker compose config
 docker compose up --build
 ```
 
-The frontend is available at `http://localhost:${RESOLVEDESK_FRONTEND_PORT}` (5173 by default). The backend is exposed at port 8080 by default. Compose starts MySQL first, waits for its health check, then starts the backend; Flyway applies V1–V4 to an empty database.
+Compose reads `.env` automatically. It now fails during configuration if the MySQL database name, application username/password, or MySQL root password is missing, rather than passing blank values to MySQL or Spring Boot. The application datasource always uses `RESOLVEDESK_DB_USERNAME` and `RESOLVEDESK_DB_PASSWORD`; it does not use the MySQL root account.
+
+The frontend is available at `http://localhost:5173` by default and the backend at `http://localhost:8080`. Compose starts MySQL first, waits for its health check, then starts the backend; Flyway applies V1–V4 when the database is empty.
+
+MySQL initialization values are used only when the named Docker volume is first created. To preserve existing local data, keep the same database credentials and use `docker compose up --build`. If the existing volume was initialized with different credentials, either restore the original values in `.env` or intentionally reset local development data with:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
+
+`docker compose down -v` permanently removes the local ResolveDesk MySQL data volume; it is never required for normal startup and should only be used when discarding local development data is intended.
 
 ## Environment configuration
 
-`.env.example` documents all local settings: MySQL database/name/ports, backend credentials and JDBC URL, environment-provided bootstrap-admin values, local ports, and the frontend API base URL. It contains placeholders only. There is no public administrator-creation endpoint and no committed credential.
+`.env.example` documents all local settings: MySQL database/name/ports, backend credentials and JDBC URL, environment-provided bootstrap-admin values, local ports, and the frontend API base URL. It contains placeholders only; copy it to the ignored `.env` file before using Docker Compose. There is no public administrator-creation endpoint and no committed credential.
 
 ## API and OpenAPI
 
