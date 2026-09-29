@@ -1,6 +1,7 @@
 package com.resolvedesk.shared.api;
 
 import com.resolvedesk.auth.application.EmailAlreadyExistsException;
+import com.resolvedesk.tickets.application.TicketNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,6 +32,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(EmailAlreadyExistsException.class)
     ResponseEntity<ProblemResponse> handleDuplicateEmail(EmailAlreadyExistsException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, "Email already exists", exception.getMessage(), "EMAIL_ALREADY_EXISTS", request, Map.of());
+    }
+
+    @ExceptionHandler(TicketNotFoundException.class)
+    ResponseEntity<ProblemResponse> handleTicketNotFound(TicketNotFoundException exception, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "Ticket not found", exception.getMessage(), "RESOURCE_NOT_FOUND", request, Map.of());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

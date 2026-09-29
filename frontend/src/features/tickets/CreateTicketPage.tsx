@@ -30,7 +30,7 @@ export function CreateTicketPage() {
     setSubmitting(true)
     try {
       const ticket = await createTicket({ title: title.trim(), description: description.trim() })
-      navigate(`/tickets/created/${ticket.id}`, { replace: true, state: { ticket } })
+      navigate(`/tickets/${ticket.id}`, { replace: true })
     } catch (requestError) {
       if (requestError instanceof ApiError) {
         setFieldErrors(requestError.problem.fieldErrors ?? {})

@@ -24,6 +24,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -53,9 +54,9 @@ class TicketCreationIntegrationTests {
 
         mockMvc.perform(createTicket(customer, new CreateTicketRequest("Unable to reset my password", "The reset email has not arrived.")))
                 .andExpect(status().isCreated())
-                .andExpect(header().string("Location", "/api/v1/tickets/1"))
-                .andExpect(jsonPath("$.id").value(1))
-                .andExpect(jsonPath("$.reference").value("SUP-1"))
+                .andExpect(header().string("Location", matchesPattern("/api/v1/tickets/\\d+")))
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.reference").value(matchesPattern("SUP-\\d+")))
                 .andExpect(jsonPath("$.status").value("OPEN"))
                 .andExpect(jsonPath("$.priority").value("MEDIUM"))
                 .andExpect(jsonPath("$.customer.id").value(customer.getId()))

@@ -1,6 +1,7 @@
 package com.resolvedesk.tickets.application;
 
 import com.resolvedesk.tickets.api.TicketDetailResponse;
+import com.resolvedesk.tickets.api.TicketSummaryResponse;
 import com.resolvedesk.tickets.api.UserSummaryResponse;
 import com.resolvedesk.tickets.domain.Ticket;
 import com.resolvedesk.users.domain.User;
@@ -17,8 +18,8 @@ public final class TicketResponseMapper {
                 ticket.getDescription(),
                 ticket.getStatus(),
                 ticket.getPriority(),
-                toSummary(ticket.getCustomer()),
-                ticket.getAssignedAgent() == null ? null : toSummary(ticket.getAssignedAgent()),
+                toUserSummary(ticket.getCustomer()),
+                ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
                 ticket.getCreatedAt(),
                 ticket.getUpdatedAt(),
                 ticket.getResolvedAt(),
@@ -27,7 +28,22 @@ public final class TicketResponseMapper {
         );
     }
 
-    private static UserSummaryResponse toSummary(User user) {
+    public static TicketSummaryResponse toSummary(Ticket ticket) {
+        return new TicketSummaryResponse(
+                ticket.getId(),
+                TicketReference.format(ticket.getId()),
+                ticket.getTitle(),
+                ticket.getStatus(),
+                ticket.getPriority(),
+                toUserSummary(ticket.getCustomer()),
+                ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
+                ticket.getCreatedAt(),
+                ticket.getUpdatedAt(),
+                ticket.getVersion()
+        );
+    }
+
+    public static UserSummaryResponse toUserSummary(User user) {
         return new UserSummaryResponse(user.getId(), user.getFirstName() + " " + user.getLastName());
     }
 }
