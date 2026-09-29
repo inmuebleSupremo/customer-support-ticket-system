@@ -62,6 +62,14 @@ public class User {
         return new User(email, passwordHash, firstName, lastName, role);
     }
 
+    public void changeRole(UserRole role) {
+        this.role = role;
+    }
+
+    public void changeActive(boolean active) {
+        this.active = active;
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

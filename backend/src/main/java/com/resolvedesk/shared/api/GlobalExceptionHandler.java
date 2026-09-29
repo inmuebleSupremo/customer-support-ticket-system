@@ -7,6 +7,10 @@ import com.resolvedesk.tickets.application.InvalidAssigneeException;
 import com.resolvedesk.tickets.application.InvalidTicketStatusTransitionException;
 import com.resolvedesk.tickets.application.StaleTicketException;
 import com.resolvedesk.tickets.application.TicketClosedException;
+import com.resolvedesk.users.application.AgentHasActiveTicketsException;
+import com.resolvedesk.users.application.LastActiveAdminException;
+import com.resolvedesk.users.application.UserNotFoundException;
+import com.resolvedesk.users.application.InvalidUserQueryException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -46,9 +50,29 @@ public class GlobalExceptionHandler {
         return problem(HttpStatus.NOT_FOUND, "Ticket not found", exception.getMessage(), "RESOURCE_NOT_FOUND", request, Map.of());
     }
 
+    @ExceptionHandler(UserNotFoundException.class)
+    ResponseEntity<ProblemResponse> handleUserNotFound(UserNotFoundException exception, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "User not found", exception.getMessage(), "RESOURCE_NOT_FOUND", request, Map.of());
+    }
+
     @ExceptionHandler(InvalidTicketQueryException.class)
     ResponseEntity<ProblemResponse> handleInvalidTicketQuery(InvalidTicketQueryException exception, HttpServletRequest request) {
         return problem(HttpStatus.BAD_REQUEST, "Validation failed", exception.getMessage(), "VALIDATION_ERROR", request, Map.of());
+    }
+
+    @ExceptionHandler(InvalidUserQueryException.class)
+    ResponseEntity<ProblemResponse> handleInvalidUserQuery(InvalidUserQueryException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "Validation failed", exception.getMessage(), "VALIDATION_ERROR", request, Map.of());
+    }
+
+    @ExceptionHandler(AgentHasActiveTicketsException.class)
+    ResponseEntity<ProblemResponse> handleAgentHasActiveTickets(AgentHasActiveTicketsException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Agent has active tickets", exception.getMessage(), "AGENT_HAS_ACTIVE_TICKETS", request, Map.of());
+    }
+
+    @ExceptionHandler(LastActiveAdminException.class)
+    ResponseEntity<ProblemResponse> handleLastActiveAdmin(LastActiveAdminException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Last active administrator", exception.getMessage(), "LAST_ACTIVE_ADMIN", request, Map.of());
     }
 
     @ExceptionHandler(InvalidAssigneeException.class)

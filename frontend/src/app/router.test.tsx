@@ -5,6 +5,7 @@ import type { CurrentUser } from '../api/auth'
 
 const authenticatedUser = { id: 17, firstName: 'Alex', lastName: 'Morgan', email: 'alex@example.com', role: 'CUSTOMER' as const, active: true, createdAt: '2026-09-29T10:00:00Z' }
 const agentUser = { id: 8, firstName: 'Maria', lastName: 'Garcia', email: 'maria@example.com', role: 'AGENT' as const, active: true, createdAt: '2026-09-29T10:00:00Z' }
+const administratorUser = { id: 1, firstName: 'Ada', lastName: 'Admin', email: 'ada@example.com', role: 'ADMIN' as const, active: true, createdAt: '2026-09-29T10:00:00Z' }
 const ticket = { id: 42, reference: 'SUP-42', title: 'Cannot sign in', description: 'I cannot sign in to my ResolveDesk account.', status: 'OPEN' as const, priority: 'MEDIUM' as const, customer: { id: 17, displayName: 'Alex Morgan' }, assignedAgent: null, createdAt: '2026-09-29T10:00:00Z', updatedAt: '2026-09-29T10:00:00Z', resolvedAt: null, closedAt: null, version: 0 }
 const createdHistory = [{ id: 700, eventType: 'TICKET_CREATED' as const, fieldName: null, oldValue: null, newValue: null, oldDisplayValue: null, newDisplayValue: null, actor: { id: 17, displayName: 'Alex Morgan' }, createdAt: '2026-09-29T10:00:00Z' }]
 const emptyComments = { content: [], page: 0, size: 50, totalElements: 0, totalPages: 0, first: true, last: true }
@@ -522,5 +523,108 @@ describe('ticket priority controls', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Update priority' }))
     expect(await screen.findByText('This ticket changed while you were viewing it. The latest version has been loaded.')).toBeInTheDocument()
     expect(screen.getByText('HIGH')).toBeInTheDocument()
+  })
+})
+
+describe('user administration', () => {
+  const fetchMock = vi.fn()
+  const managedUsers = {
+    content: [
+      administratorUser,
+      { id: 8, firstName: 'Maria', lastName: 'Garcia', email: 'maria@example.com', role: 'AGENT' as const, active: true, createdAt: '2026-09-28T10:00:00Z' }
+    ],
+    page: 0,
+    size: 20,
+    totalElements: 21,
+    totalPages: 2,
+    first: true,
+    last: false
+  }
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/admin/users')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreAdminSession() {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(administratorUser))
+  }
+
+  it('renders the administrator user list, applies filters, and changes pages through the API layer', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(managedUsers))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...managedUsers, page: 1, first: false, last: true }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...managedUsers, content: [managedUsers.content[1]], totalElements: 1, totalPages: 1, last: true }))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'User administration' })).toBeInTheDocument()
+    expect(await screen.findByRole('table')).toBeInTheDocument()
+    expect(screen.getByText('Maria Garcia')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/users?page=1&sort=createdAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'AGENT' } })
+    fireEvent.change(screen.getByLabelText('Account status'), { target: { value: 'true' } })
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'maria' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/users?role=AGENT&active=true&search=maria&page=0&sort=createdAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
+  })
+
+  it('updates roles and account activation through the shared CSRF API layer', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(managedUsers))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'role-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...managedUsers.content[1], role: 'ADMIN' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'active-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...managedUsers.content[1], role: 'ADMIN', active: false }))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'User administration' })
+    await screen.findByRole('table')
+    fireEvent.change(screen.getByLabelText('Role for maria@example.com'), { target: { value: 'ADMIN' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Update role' })[1])
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/users/8/role', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ role: 'ADMIN' }) })))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Deactivate' })[1])
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/users/8/active', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ active: false }) })))
+    expect(await screen.findByRole('button', { name: 'Activate' })).toBeInTheDocument()
+  })
+
+  it('displays final-administrator and assigned-agent business conflicts', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(managedUsers))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'admin-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'LAST_ACTIVE_ADMIN', detail: 'Cannot deactivate final admin.' }, 409))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'agent-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'AGENT_HAS_ACTIVE_TICKETS', detail: 'Reassign the agent first.' }, 409))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'User administration' })
+    await screen.findByRole('table')
+    fireEvent.click(screen.getAllByRole('button', { name: 'Deactivate' })[0])
+    expect(await screen.findByRole('alert')).toHaveTextContent('The final active administrator cannot be demoted or deactivated.')
+    fireEvent.change(screen.getByLabelText('Role for maria@example.com'), { target: { value: 'CUSTOMER' } })
+    fireEvent.click(screen.getAllByRole('button', { name: 'Update role' })[1])
+    expect(await screen.findByRole('alert')).toHaveTextContent('Reassign the agent first.')
+  })
+
+  it('renders loading, empty, and error states', async () => {
+    restoreAdminSession()
+    let resolveUsers: (response: Response) => void = () => undefined
+    fetchMock.mockReturnValueOnce(new Promise<Response>(resolve => { resolveUsers = resolve }))
+    render(<AppRouter />)
+    expect(await screen.findByText('Loading users…')).toBeInTheDocument()
+    resolveUsers(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
+    expect(await screen.findByText('No users match the current filters.')).toBeInTheDocument()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'User administration is temporarily unavailable.' }, 500))
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'AGENT' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('User administration is temporarily unavailable.')
+  })
+
+  it('keeps the administration route unavailable to non-administrators', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agentUser))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
   })
 })
