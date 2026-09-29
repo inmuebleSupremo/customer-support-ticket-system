@@ -26,4 +26,10 @@
 
 ## Standard build and test commands
 
-To be established during Phase 1. Do not invent or run application build, test, database, or frontend commands before the relevant project scaffolding exists.
+Run these commands from the repository root:
+
+- Backend tests: `mvn -f backend/pom.xml test`
+- Backend package: `mvn -f backend/pom.xml package`
+- Frontend type check: `npm --prefix frontend run typecheck`
+- Frontend tests: `npm --prefix frontend test`
+- Frontend production build: `npm --prefix frontend run build`
