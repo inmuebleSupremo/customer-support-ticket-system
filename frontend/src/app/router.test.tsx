@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppRouter } from './router'
 import type { CurrentUser } from '../api/auth'
@@ -79,6 +79,82 @@ describe('identity flow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Log out Alex' }))
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/auth/logout', expect.objectContaining({ credentials: 'include', method: 'POST' })))
+  })
+})
+
+describe('application navigation', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreSession(user: CurrentUser) {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(user))
+  }
+
+  it('shows only customer destinations, identity, and role context', async () => {
+    restoreSession(authenticatedUser)
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Welcome, Alex.' })
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Home' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('link', { name: 'My Tickets' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('link', { name: 'Create Ticket' })).toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'Support Queue' })).not.toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'User Administration' })).not.toBeInTheDocument()
+    expect(screen.getByText('Alex Morgan')).toBeInTheDocument()
+    expect(screen.getByText('Customer')).toBeInTheDocument()
+    expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('shows agent destinations without customer or administration destinations', async () => {
+    restoreSession(agentUser)
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Welcome, Maria.' })
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Support Queue' })).toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'My Tickets' })).not.toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'User Administration' })).not.toBeInTheDocument()
+    expect(screen.getByText('Agent')).toBeInTheDocument()
+  })
+
+  it('shows administrator destinations without customer destinations', async () => {
+    restoreSession(administratorUser)
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Welcome, Ada.' })
+    const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
+    expect(within(navigation).getByRole('link', { name: 'Support Queue' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('link', { name: 'User Administration' })).toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'My Tickets' })).not.toBeInTheDocument()
+    expect(screen.getByText('Administrator')).toBeInTheDocument()
+  })
+
+  it('marks the current customer workspace destination as active', async () => {
+    window.history.replaceState({}, '', '/tickets')
+    restoreSession(authenticatedUser)
+    fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Your tickets' })
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('[aria-current="page"]')).toHaveTextContent('My Tickets')
+  })
+
+  it('opens and closes the mobile drawer, restoring focus after route selection', async () => {
+    restoreSession(authenticatedUser)
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Welcome, Alex.' })
+    const menuButton = screen.getByRole('button', { name: 'Open navigation menu' })
+    fireEvent.click(menuButton)
+    const drawer = screen.getByRole('dialog', { name: 'Navigation menu' })
+    expect(drawer).toBeInTheDocument()
+    fireEvent.click(within(drawer).getByRole('link', { name: 'My Tickets' }))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Navigation menu' })).not.toBeInTheDocument())
+    expect(menuButton).toHaveFocus()
   })
 })
 
@@ -243,7 +319,7 @@ describe('agent ticket queue', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Ticket queue' })).toBeInTheDocument()
     expect(await screen.findByRole('table')).toBeInTheDocument()
-    expect(screen.getAllByText('Maria Garcia')).toHaveLength(2)
+    expect(within(screen.getByRole('table')).getByText('Maria Garcia')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
   })
 
