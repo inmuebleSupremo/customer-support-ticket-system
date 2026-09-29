@@ -1,6 +1,9 @@
 spring:
   application:
     name: resolvedesk
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
   datasource:
     url: ${RESOLVEDESK_DB_URL}
     username: ${RESOLVEDESK_DB_USERNAME}
@@ -25,3 +28,10 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui
+
+resolvedesk:
+  bootstrap-admin:
+    email: ${RESOLVEDESK_BOOTSTRAP_ADMIN_EMAIL:}
+    password: ${RESOLVEDESK_BOOTSTRAP_ADMIN_PASSWORD:}
+    first-name: ${RESOLVEDESK_BOOTSTRAP_ADMIN_FIRST_NAME:}
+    last-name: ${RESOLVEDESK_BOOTSTRAP_ADMIN_LAST_NAME:}
