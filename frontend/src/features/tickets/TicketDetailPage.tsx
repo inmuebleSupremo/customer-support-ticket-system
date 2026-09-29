@@ -1,149 +1,37 @@
 import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { Button } from '../../components/ui/Button'
+import { PriorityBadge, RoleBadge, StatusBadge } from '../../components/ui/Badges'
+import { Alert, EmptyState, LoadingState } from '../../components/ui/Feedback'
+import { Panel } from '../../components/ui/Panel'
 import { ApiError } from '../../api/client'
 import { changeTicketAssignee, changeTicketPriority, changeTicketStatus, createTicketComment, getAgents, getTicket, getTicketComments, getTicketHistory, type AgentSummary, type PageResponse, type TicketComment, type TicketDetail, type TicketHistoryEntry } from '../../api/tickets'
 import { useAuth } from '../auth/AuthContext'
 
-function displayEvent(eventType: TicketHistoryEntry['eventType']) {
-  return eventType.split('_').map(word => word[0] + word.slice(1).toLowerCase()).join(' ')
-}
+function formatDate(value: string) { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) }
+function titleCase(value: string) { return value.split('_').map(word => word[0] + word.slice(1).toLowerCase()).join(' ') }
 
 export function TicketDetailPage() {
-  const { user } = useAuth()
-  const { ticketId } = useParams()
-  const [ticket, setTicket] = useState<TicketDetail | null>(null)
-  const [history, setHistory] = useState<TicketHistoryEntry[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [agents, setAgents] = useState<AgentSummary[]>([])
-  const [selectedAgentId, setSelectedAgentId] = useState('')
-  const [selectedPriority, setSelectedPriority] = useState<TicketDetail['priority']>('MEDIUM')
-  const [mutationError, setMutationError] = useState<string | null>(null)
-  const [comments, setComments] = useState<PageResponse<TicketComment> | null>(null)
-  const [commentsError, setCommentsError] = useState<string | null>(null)
-  const [commentContent, setCommentContent] = useState('')
-  const [commentValidationError, setCommentValidationError] = useState<string | null>(null)
-
-  const loadTicket = useCallback(async () => {
-    if (!ticketId) return
-    try {
-      const [ticketResponse, historyResponse] = await Promise.all([getTicket(ticketId), getTicketHistory(ticketId)])
-      setTicket(ticketResponse)
-      setHistory(historyResponse)
-      setSelectedAgentId(ticketResponse.assignedAgent?.id.toString() ?? '')
-      setSelectedPriority(ticketResponse.priority)
-      setError(null)
-    } catch (requestError) {
-      setError(requestError instanceof ApiError ? requestError.message : 'Unable to load this ticket.')
-    }
-  }, [ticketId])
-
-  useEffect(() => { void loadTicket() }, [loadTicket])
-
-  const loadComments = useCallback(async () => {
-    if (!ticketId) return
-    try {
-      setComments(await getTicketComments(ticketId))
-      setCommentsError(null)
-    } catch (requestError) {
-      setCommentsError(requestError instanceof ApiError ? requestError.message : 'Unable to load the conversation.')
-    }
-  }, [ticketId])
-
-  useEffect(() => { void loadComments() }, [loadComments])
-
-  useEffect(() => {
-    if (user?.role === 'AGENT' || user?.role === 'ADMIN') {
-      void getAgents().then(setAgents).catch(() => setAgents([]))
-    }
-  }, [user?.role])
-
-  async function handleAssignment(agentId = selectedAgentId === '' ? null : Number(selectedAgentId)) {
-    if (!ticket) return
-    setMutationError(null)
-    try {
-      await changeTicketAssignee(ticket.id, agentId, ticket.version)
-      await loadTicket()
-    } catch (requestError) {
-      if (requestError instanceof ApiError && requestError.problem.code === 'STALE_RESOURCE') {
-        setMutationError('This ticket changed while you were viewing it. The latest version has been loaded.')
-        await loadTicket()
-      } else {
-        setMutationError(requestError instanceof ApiError ? requestError.message : 'Unable to update the ticket assignment.')
-      }
-    }
-  }
-
-  async function handleStatus(status: TicketDetail['status']) {
-    if (!ticket) return
-    setMutationError(null)
-    try {
-      await changeTicketStatus(ticket.id, status, ticket.version)
-      await loadTicket()
-    } catch (requestError) {
-      if (requestError instanceof ApiError && requestError.problem.code === 'STALE_RESOURCE') {
-        setMutationError('This ticket changed while you were viewing it. The latest version has been loaded.')
-        await loadTicket()
-      } else {
-        setMutationError(requestError instanceof ApiError ? requestError.message : 'Unable to update the ticket status.')
-      }
-    }
-  }
-
-  async function handlePriority() {
-    if (!ticket) return
-    setMutationError(null)
-    try {
-      await changeTicketPriority(ticket.id, selectedPriority, ticket.version)
-      await loadTicket()
-    } catch (requestError) {
-      if (requestError instanceof ApiError && requestError.problem.code === 'STALE_RESOURCE') {
-        setMutationError('This ticket changed while you were viewing it. The latest version has been loaded.')
-        await loadTicket()
-      } else {
-        setMutationError(requestError instanceof ApiError ? requestError.message : 'Unable to update the ticket priority.')
-      }
-    }
-  }
-
-  async function handleCommentSubmission(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    if (!ticket) return
-    const trimmedContent = commentContent.trim()
-    if (!trimmedContent) {
-      setCommentValidationError('Comment content is required.')
-      return
-    }
-    if (trimmedContent.length > 3000) {
-      setCommentValidationError('Comment content must not exceed 3000 characters.')
-      return
-    }
-    setCommentValidationError(null)
-    setCommentsError(null)
-    try {
-      await createTicketComment(ticket.id, trimmedContent)
-      setCommentContent('')
-      await Promise.all([loadTicket(), loadComments()])
-    } catch (requestError) {
-      setCommentsError(requestError instanceof ApiError ? requestError.message : 'Unable to add this comment.')
-    }
-  }
-
-  const backTo = user?.role === 'CUSTOMER' ? '/tickets' : '/queue'
-  const backLabel = user?.role === 'CUSTOMER' ? 'Back to your tickets' : 'Back to support queue'
-  if (error) return <section aria-labelledby="ticket-detail-title"><h1 id="ticket-detail-title" className="text-3xl font-bold">Ticket unavailable</h1><p role="alert" className="mt-4 rounded bg-red-50 p-3 text-red-800">{error}</p><Link className="mt-4 inline-block text-sky-700 underline" to={backTo}>{backLabel}</Link></section>
-  if (ticket === null || history === null) return <p role="status">Loading ticket…</p>
-  const isStaff = user?.role === 'AGENT' || user?.role === 'ADMIN'
-  const nextStatuses: TicketDetail['status'][] = ticket.status === 'OPEN' ? ['IN_PROGRESS'] : ticket.status === 'IN_PROGRESS' ? ['OPEN', 'RESOLVED'] : ticket.status === 'RESOLVED' ? ['IN_PROGRESS', 'CLOSED'] : []
-  const permittedStatuses: TicketDetail['status'][] = isStaff ? nextStatuses : user?.role === 'CUSTOMER' && ticket.status === 'RESOLVED' ? ['IN_PROGRESS'] : []
-
-  return (
-    <section aria-labelledby="ticket-detail-title" className="mx-auto max-w-3xl space-y-8">
-      <Link className="text-sky-700 underline" to={backTo}>{backLabel}</Link>
-      <div className="rounded border border-slate-200 bg-white p-6 shadow-sm"><p className="text-sm font-medium uppercase tracking-wide text-sky-700">{ticket.reference}</p><h1 id="ticket-detail-title" className="mt-2 text-3xl font-bold">{ticket.title}</h1><dl className="mt-5 grid gap-3 sm:grid-cols-2"><div><dt className="text-sm text-slate-500">Status</dt><dd className="font-medium">{ticket.status}</dd></div><div><dt className="text-sm text-slate-500">Priority</dt><dd className="font-medium">{ticket.priority}</dd></div><div><dt className="text-sm text-slate-500">Created</dt><dd>{new Date(ticket.createdAt).toLocaleString()}</dd></div><div><dt className="text-sm text-slate-500">Last updated</dt><dd>{new Date(ticket.updatedAt).toLocaleString()}</dd></div></dl><div className="mt-6 border-t pt-5"><h2 className="text-lg font-semibold">Description</h2><p className="mt-2 whitespace-pre-wrap text-slate-700">{ticket.description}</p></div></div>
-      {mutationError && <p role="alert" className="rounded bg-red-50 p-3 text-red-800">{mutationError}</p>}
-      {ticket.status !== 'CLOSED' && (isStaff || permittedStatuses.length > 0) && <section className="rounded border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="ticket-actions-title"><h2 id="ticket-actions-title" className="text-xl font-bold">Ticket actions</h2>{isStaff && <><div className="mt-4"><label className="block text-sm font-medium" htmlFor="ticket-assignee">Assigned agent<select id="ticket-assignee" className="mt-1 block w-full rounded border p-2" value={selectedAgentId} onChange={event => setSelectedAgentId(event.target.value)}><option value="">Unassigned</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label><div className="mt-3 flex flex-wrap gap-2"><button className="rounded bg-sky-700 px-4 py-2 font-medium text-white" type="button" onClick={() => void handleAssignment()}>Update assignment</button>{user?.role === 'AGENT' && <button className="rounded border px-4 py-2 font-medium" type="button" onClick={() => { setSelectedAgentId(user.id.toString()); void handleAssignment(user.id) }}>Assign to me</button>}</div></div><div className="mt-5"><label className="block text-sm font-medium" htmlFor="ticket-priority">Change priority<select id="ticket-priority" className="mt-1 block w-full rounded border p-2" value={selectedPriority} onChange={event => setSelectedPriority(event.target.value as TicketDetail['priority'])}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label><button className="mt-3 rounded border px-4 py-2 font-medium" type="button" onClick={() => void handlePriority()}>Update priority</button></div></>}<div className="mt-5"><h3 className="font-semibold">Change status</h3><div className="mt-2 flex flex-wrap gap-2">{permittedStatuses.map(status => <button key={status} className="rounded border px-4 py-2 font-medium" type="button" onClick={() => void handleStatus(status)}>Change status to {status.replace('_', ' ')}</button>)}</div></div></section>}
-      <section className="rounded border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="conversation-title"><h2 id="conversation-title" className="text-2xl font-bold">Conversation</h2>{commentsError && <p role="alert" className="mt-3 rounded bg-red-50 p-3 text-red-800">{commentsError}</p>}{comments === null && !commentsError && <p role="status" className="mt-3">Loading conversation…</p>}{comments && (comments.content.length === 0 ? <p className="mt-3 text-slate-600">No comments have been added yet.</p> : <ol className="mt-4 space-y-3">{comments.content.map(comment => <li key={comment.id} className="rounded border border-slate-200 p-4"><p className="font-medium">{comment.author.displayName} <span className="text-sm font-normal text-slate-500">({comment.author.role})</span></p><p className="mt-1 whitespace-pre-wrap text-slate-700">{comment.content}</p><p className="mt-2 text-sm text-slate-500">{new Date(comment.createdAt).toLocaleString()}</p></li>)}</ol>)}{ticket.status !== 'CLOSED' && <form className="mt-6 border-t pt-5" onSubmit={handleCommentSubmission}><label className="block text-sm font-medium" htmlFor="comment-content">Add a comment<textarea id="comment-content" className="mt-1 block w-full rounded border p-2" value={commentContent} onChange={event => setCommentContent(event.target.value)} maxLength={3000} rows={4} /></label>{commentValidationError && <p role="alert" className="mt-2 text-sm text-red-700">{commentValidationError}</p>}<button className="mt-3 rounded bg-sky-700 px-4 py-2 font-medium text-white" type="submit">Add comment</button></form>}</section>
-      <div><h2 className="text-2xl font-bold">Activity</h2>{history.length === 0 ? <p className="mt-3 text-slate-600">No activity has been recorded yet.</p> : <ol className="mt-4 space-y-3">{history.map(entry => <li key={entry.id} className="rounded border border-slate-200 bg-white p-4"><p className="font-medium">{displayEvent(entry.eventType)}</p><p className="mt-1 text-sm text-slate-600">By {entry.actor.displayName} · {new Date(entry.createdAt).toLocaleString()}</p></li>)}</ol>}</div>
-    </section>
-  )
+  const { user } = useAuth(); const { ticketId } = useParams()
+  const [ticket, setTicket] = useState<TicketDetail | null>(null); const [history, setHistory] = useState<TicketHistoryEntry[] | null>(null); const [comments, setComments] = useState<PageResponse<TicketComment> | null>(null)
+  const [error, setError] = useState<string | null>(null); const [mutationError, setMutationError] = useState<string | null>(null); const [commentsError, setCommentsError] = useState<string | null>(null)
+  const [agents, setAgents] = useState<AgentSummary[]>([]); const [selectedAgentId, setSelectedAgentId] = useState(''); const [selectedPriority, setSelectedPriority] = useState<TicketDetail['priority']>('MEDIUM'); const [commentContent, setCommentContent] = useState(''); const [commentValidationError, setCommentValidationError] = useState<string | null>(null); const [mutating, setMutating] = useState(false); const [commenting, setCommenting] = useState(false)
+  const loadTicket = useCallback(async () => { if (!ticketId) return; try { const [ticketResponse, historyResponse] = await Promise.all([getTicket(ticketId), getTicketHistory(ticketId)]); setTicket(ticketResponse); setHistory(historyResponse); setSelectedAgentId(ticketResponse.assignedAgent?.id.toString() ?? ''); setSelectedPriority(ticketResponse.priority); setError(null) } catch (requestError) { setError(requestError instanceof ApiError ? requestError.message : 'Unable to load this ticket.') } }, [ticketId])
+  const loadComments = useCallback(async () => { if (!ticketId) return; try { setComments(await getTicketComments(ticketId)); setCommentsError(null) } catch (requestError) { setCommentsError(requestError instanceof ApiError ? requestError.message : 'Unable to load the conversation.') } }, [ticketId])
+  useEffect(() => { void loadTicket() }, [loadTicket]); useEffect(() => { void loadComments() }, [loadComments]); useEffect(() => { if (user?.role === 'AGENT' || user?.role === 'ADMIN') void getAgents().then(setAgents).catch(() => setAgents([])) }, [user?.role])
+  async function mutate(operation: () => Promise<unknown>) { if (!ticket) return; setMutationError(null); setMutating(true); try { await operation(); await loadTicket() } catch (requestError) { if (requestError instanceof ApiError && requestError.problem.code === 'STALE_RESOURCE') { setMutationError('This ticket changed while you were viewing it. The latest version has been loaded.'); await loadTicket() } else setMutationError(requestError instanceof ApiError ? requestError.message : 'Unable to update this ticket.') } finally { setMutating(false) } }
+  async function submitComment(event: FormEvent<HTMLFormElement>) { event.preventDefault(); if (!ticket) return; const content = commentContent.trim(); if (!content) { setCommentValidationError('Comment content is required.'); return } if (content.length > 3000) { setCommentValidationError('Comment content must not exceed 3000 characters.'); return } setCommentValidationError(null); setCommentsError(null); setCommenting(true); try { await createTicketComment(ticket.id, content); setCommentContent(''); await Promise.all([loadTicket(), loadComments()]) } catch (requestError) { setCommentsError(requestError instanceof ApiError ? requestError.message : 'Unable to add this comment.') } finally { setCommenting(false) } }
+  const backTo = user?.role === 'CUSTOMER' ? '/tickets' : '/queue'; const backLabel = user?.role === 'CUSTOMER' ? 'Back to your tickets' : 'Back to support queue'
+  if (error) return <section className="mx-auto max-w-3xl space-y-4"><h1 className="text-3xl font-bold tracking-tight">Ticket unavailable</h1><Alert tone="danger">{error}</Alert><Link className="font-semibold text-sky-800 underline" to={backTo}>{backLabel}</Link></section>
+  if (!ticket || !history) return <LoadingState label="Loading ticket…" />
+  const isStaff = user?.role === 'AGENT' || user?.role === 'ADMIN'; const nextStatuses: TicketDetail['status'][] = ticket.status === 'OPEN' ? ['IN_PROGRESS'] : ticket.status === 'IN_PROGRESS' ? ['OPEN', 'RESOLVED'] : ticket.status === 'RESOLVED' ? ['IN_PROGRESS', 'CLOSED'] : []; const permittedStatuses: TicketDetail['status'][] = isStaff ? nextStatuses : user?.role === 'CUSTOMER' && ticket.status === 'RESOLVED' ? ['IN_PROGRESS'] : []
+  return <section className="mx-auto max-w-6xl space-y-6" aria-labelledby="ticket-detail-title"><Link className="inline-flex min-h-11 items-center font-semibold text-sky-800 underline underline-offset-2" to={backTo}>{backLabel}</Link><header className="border-b border-slate-200 pb-6"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-800">{ticket.reference}</p><div className="mt-2 flex flex-wrap items-start justify-between gap-4"><div><h1 id="ticket-detail-title" className="text-3xl font-bold tracking-tight text-slate-950">{ticket.title}</h1><div className="mt-3 flex flex-wrap gap-2"><StatusBadge status={ticket.status} /><PriorityBadge priority={ticket.priority} /></div></div>{ticket.status === 'CLOSED' && <p className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-700">Closed tickets are read-only.</p>}</div></header>{mutationError && <Alert tone="danger">{mutationError}</Alert>}<div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_21rem]"><main className="space-y-6"><Panel><h2 className="text-xl font-semibold text-slate-950">Description</h2><p className="mt-3 whitespace-pre-wrap leading-7 text-slate-700">{ticket.description}</p></Panel><Conversation comments={comments} error={commentsError} content={commentContent} validationError={commentValidationError} closed={ticket.status === 'CLOSED'} commenting={commenting} onChange={setCommentContent} onSubmit={submitComment} /><ActivityTimeline history={history} /></main><aside className="space-y-6"><TicketMetadata ticket={ticket} />{ticket.status !== 'CLOSED' && (isStaff || permittedStatuses.length > 0) && <TicketActions ticket={ticket} isStaff={isStaff} isAgent={user?.role === 'AGENT'} currentUserId={user?.id} agents={agents} agentId={selectedAgentId} priority={selectedPriority} statuses={permittedStatuses} mutating={mutating} onAgentChange={setSelectedAgentId} onPriorityChange={setSelectedPriority} onAssign={() => void mutate(() => changeTicketAssignee(ticket.id, selectedAgentId === '' ? null : Number(selectedAgentId), ticket.version))} onAssignSelf={() => { setSelectedAgentId(String(user?.id)); void mutate(() => changeTicketAssignee(ticket.id, user?.id ?? null, ticket.version)) }} onPriority={() => void mutate(() => changeTicketPriority(ticket.id, selectedPriority, ticket.version))} onStatus={status => void mutate(() => changeTicketStatus(ticket.id, status, ticket.version))} />}</aside></div></section>
 }
+
+function TicketMetadata({ ticket }: { ticket: TicketDetail }) { const rows = [['Customer', ticket.customer.displayName], ['Assigned agent', ticket.assignedAgent?.displayName ?? 'Unassigned'], ['Created', formatDate(ticket.createdAt)], ['Last updated', formatDate(ticket.updatedAt)], ...(ticket.resolvedAt ? [['Resolved', formatDate(ticket.resolvedAt)]] : []), ...(ticket.closedAt ? [['Closed', formatDate(ticket.closedAt)]] : [])]; return <Panel><h2 className="text-lg font-semibold text-slate-950">Ticket details</h2><dl className="mt-4 space-y-4">{rows.map(([label, value]) => <div key={label}><dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt><dd className="mt-1 text-sm font-medium text-slate-800">{value}</dd></div>)}</dl></Panel> }
+
+function TicketActions({ agentId, agents, currentUserId, isAgent, isStaff, mutating, onAgentChange, onAssign, onAssignSelf, onPriority, onPriorityChange, onStatus, priority, statuses, ticket }: { agentId: string; agents: AgentSummary[]; currentUserId?: number; isAgent: boolean; isStaff: boolean; mutating: boolean; onAgentChange: (value: string) => void; onAssign: () => void; onAssignSelf: () => void; onPriority: () => void; onPriorityChange: (value: TicketDetail['priority']) => void; onStatus: (status: TicketDetail['status']) => void; priority: TicketDetail['priority']; statuses: TicketDetail['status'][]; ticket: TicketDetail }) { return <Panel><h2 className="text-lg font-semibold text-slate-950">Ticket actions</h2>{isStaff && <div className="mt-5 space-y-5"><div><label className="rd-label" htmlFor="ticket-assignee">Assigned agent</label><select id="ticket-assignee" className="rd-select" value={agentId} disabled={mutating} onChange={event => onAgentChange(event.target.value)}><option value="">Unassigned</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select><div className="mt-3 flex flex-wrap gap-2"><Button disabled={mutating} onClick={onAssign}>Update assignment</Button>{isAgent && <Button variant="secondary" disabled={mutating || ticket.assignedAgent?.id === currentUserId} onClick={onAssignSelf}>Assign to me</Button>}</div></div><div className="border-t border-slate-200 pt-5"><label className="rd-label" htmlFor="ticket-priority">Priority</label><div className="mt-2"><PriorityBadge priority={priority} /></div><select id="ticket-priority" className="rd-select" value={priority} disabled={mutating} onChange={event => onPriorityChange(event.target.value as TicketDetail['priority'])}><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select><Button className="mt-3" variant="secondary" disabled={mutating} onClick={onPriority}>Update priority</Button></div></div>} {statuses.length > 0 && <div className="mt-5 border-t border-slate-200 pt-5"><h3 className="text-sm font-semibold text-slate-900">Workflow</h3><p className="mt-1 text-sm text-slate-600">Only valid next actions are available.</p><div className="mt-3 flex flex-wrap gap-2">{statuses.map(status => <Button key={status} variant={status === 'CLOSED' ? 'danger' : 'secondary'} disabled={mutating} onClick={() => onStatus(status)}>Change status to {titleCase(status)}</Button>)}</div></div>}</Panel> }
+
+function Conversation({ closed, commenting, comments, content, error, onChange, onSubmit, validationError }: { closed: boolean; commenting: boolean; comments: PageResponse<TicketComment> | null; content: string; error: string | null; onChange: (value: string) => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void; validationError: string | null }) { return <Panel><h2 className="text-xl font-semibold text-slate-950">Conversation</h2>{error && <div className="mt-4"><Alert tone="danger">{error}</Alert></div>}{comments === null && !error && <div className="mt-4"><LoadingState label="Loading conversation…" /></div>}{comments && (comments.content.length === 0 ? <p className="mt-4 text-sm text-slate-600">No comments have been added yet.</p> : <ol className="mt-5 divide-y divide-slate-200">{comments.content.map(comment => <li key={comment.id} className={`py-4 first:pt-0 ${comment.author.role === 'CUSTOMER' ? '' : 'border-l-2 border-sky-200 pl-4'}`}><div className="flex flex-wrap items-center justify-between gap-2"><div className="flex items-center gap-2"><p className="font-semibold text-slate-950">{comment.author.displayName}</p><RoleBadge role={comment.author.role} /></div><p className="text-xs text-slate-500">{formatDate(comment.createdAt)}</p></div><p className="mt-3 whitespace-pre-wrap leading-6 text-slate-700">{comment.content}</p></li>)}</ol>)}{closed ? <p className="mt-5 border-t border-slate-200 pt-5 text-sm font-medium text-slate-600">This conversation is read-only because the ticket is closed.</p> : <form className="mt-5 border-t border-slate-200 pt-5" onSubmit={onSubmit} aria-busy={commenting}><label className="rd-label" htmlFor="comment-content">Add a comment</label><textarea id="comment-content" className="rd-textarea mt-2 min-h-32" value={content} onChange={event => onChange(event.target.value)} maxLength={3000} aria-invalid={Boolean(validationError)} aria-describedby={validationError ? 'comment-content-error' : undefined} />{validationError && <p id="comment-content-error" className="rd-validation-message">{validationError}</p>}<Button className="mt-3" type="submit" disabled={commenting}>{commenting ? 'Adding comment…' : 'Add comment'}</Button></form>}</Panel> }
+
+function ActivityTimeline({ history }: { history: TicketHistoryEntry[] }) { return <Panel><h2 className="text-xl font-semibold text-slate-950">Activity</h2>{history.length === 0 ? <p className="mt-4 text-sm text-slate-600">No activity has been recorded yet.</p> : <ol className="mt-5 space-y-0 border-l border-slate-200">{history.map(entry => <li key={entry.id} className="relative pb-6 pl-5 last:pb-0"><span aria-hidden="true" className="absolute -left-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-white bg-sky-700" /><p className="font-semibold text-slate-950">{entry.actor.displayName} <span className="font-normal text-slate-700">{titleCase(entry.eventType)}</span></p>{entry.oldDisplayValue && entry.newDisplayValue && <p className="mt-1 text-sm text-slate-700">{entry.oldDisplayValue} → {entry.newDisplayValue}</p>}<p className="mt-1 text-xs text-slate-500">By {entry.actor.displayName} · {formatDate(entry.createdAt)}</p></li>)}</ol>}</Panel> }

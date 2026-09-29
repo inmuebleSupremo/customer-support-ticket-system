@@ -392,7 +392,7 @@ describe('agent ticket queue', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
     render(<AppRouter />)
-    expect(await screen.findByText('No tickets match the current queue filters.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No matching tickets' })).toBeInTheDocument()
   })
 
   it('submits filters, reference search, and sort changes through the API layer', async () => {
@@ -405,10 +405,24 @@ describe('agent ticket queue', () => {
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'OPEN' } })
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'HIGH' } })
     fireEvent.change(screen.getByLabelText('Assigned agent'), { target: { value: '8' } })
-    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'SUP-42' } })
+    fireEvent.change(screen.getByLabelText('Search tickets'), { target: { value: 'SUP-42' } })
     fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'title,asc' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
+  })
+
+  it('clears active filters and reloads the default queue', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Ticket queue' })
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'OPEN' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Clear filters' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?page=0&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
   })
 
   it('requests the next page and navigates to a queue ticket detail', async () => {
@@ -469,10 +483,10 @@ describe('ticket assignment and lifecycle controls', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Ticket actions' })).toBeInTheDocument()
     expect(screen.getByLabelText('Assigned agent')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Change status to IN PROGRESS' })).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Change status to IN PROGRESS' }))
+    expect(screen.getByRole('button', { name: 'Change status to In Progress' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Change status to In Progress' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/status', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ status: 'IN_PROGRESS', version: 0 }) })))
-    expect(await screen.findByRole('button', { name: 'Change status to RESOLVED' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Change status to Resolved' })).toBeInTheDocument()
   })
 
   it('assigns a ticket from the active-agent lookup through the shared API layer', async () => {
@@ -505,9 +519,9 @@ describe('ticket assignment and lifecycle controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
-    expect(await screen.findByRole('button', { name: 'Change status to IN PROGRESS' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Change status to In Progress' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Assigned agent')).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Change status to IN PROGRESS' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Change status to In Progress' }))
     expect(await screen.findByText('This ticket changed while you were viewing it. The latest version has been loaded.')).toBeInTheDocument()
   })
 
@@ -520,7 +534,7 @@ describe('ticket assignment and lifecycle controls', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ticket actions' })).not.toBeInTheDocument()
-    expect(screen.queryByLabelText('Change priority')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
   })
 })
 
@@ -549,7 +563,7 @@ describe('ticket conversation', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Conversation' })).toBeInTheDocument()
     expect(screen.getByText('I am investigating this issue.')).toBeInTheDocument()
-    expect(screen.getByText('(AGENT)')).toBeInTheDocument()
+    expect(screen.getByText('Agent')).toBeInTheDocument()
     expect(screen.getByLabelText('Add a comment')).toBeInTheDocument()
   })
 
@@ -626,18 +640,18 @@ describe('ticket priority controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, priority: 'URGENT', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     render(<AppRouter />)
-    expect(await screen.findByText('MEDIUM')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Change priority'), { target: { value: 'URGENT' } })
+    expect(await screen.findAllByText('Medium')).not.toHaveLength(0)
+    fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'URGENT' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update priority' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/priority', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ priority: 'URGENT', version: 0 }) })))
-    expect(await screen.findByText('URGENT')).toBeInTheDocument()
+    expect(await screen.findAllByText('Urgent')).not.toHaveLength(0)
   })
 
   it('allows an administrator but never exposes priority mutation to customers or closed tickets', async () => {
     restoreSession({ ...agentUser, role: 'ADMIN' })
     loadStaffTicket()
     render(<AppRouter />)
-    expect(await screen.findByLabelText('Change priority')).toBeInTheDocument()
+    expect(await screen.findByLabelText('Priority')).toBeInTheDocument()
   })
 
   it('keeps customer and closed-ticket priority displays read-only', async () => {
@@ -646,8 +660,8 @@ describe('ticket priority controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
-    expect(await screen.findByText('MEDIUM')).toBeInTheDocument()
-    expect(screen.queryByLabelText('Change priority')).not.toBeInTheDocument()
+    expect(await screen.findByText('Medium')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
   })
 
   it('reloads after a stale priority response and displays API errors', async () => {
@@ -658,11 +672,11 @@ describe('ticket priority controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, priority: 'HIGH', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     render(<AppRouter />)
-    await screen.findByLabelText('Change priority')
-    fireEvent.change(screen.getByLabelText('Change priority'), { target: { value: 'URGENT' } })
+    await screen.findByLabelText('Priority')
+    fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'URGENT' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update priority' }))
     expect(await screen.findByText('This ticket changed while you were viewing it. The latest version has been loaded.')).toBeInTheDocument()
-    expect(screen.getByText('HIGH')).toBeInTheDocument()
+    expect(screen.getAllByText('High')).not.toHaveLength(0)
   })
 })
 
