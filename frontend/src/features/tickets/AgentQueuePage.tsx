@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { listTickets, type PageResponse, type TicketListQuery, type TicketSummary } from '../../api/tickets'
+import { getAgents, listTickets, type AgentSummary, type PageResponse, type TicketListQuery, type TicketSummary } from '../../api/tickets'
 
 const emptyFilters = { status: '', priority: '', assignedAgentId: '', unassigned: false, search: '', sort: 'updatedAt,desc' }
 
@@ -9,6 +9,7 @@ export function AgentQueuePage() {
   const [filters, setFilters] = useState(emptyFilters)
   const [query, setQuery] = useState<TicketListQuery>({ sort: 'updatedAt,desc' })
   const [result, setResult] = useState<PageResponse<TicketSummary> | null>(null)
+  const [agents, setAgents] = useState<AgentSummary[]>([])
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -18,6 +19,10 @@ export function AgentQueuePage() {
       .then(setResult)
       .catch(requestError => setError(requestError instanceof ApiError ? requestError.message : 'Unable to load the support queue.'))
   }, [query])
+
+  useEffect(() => {
+    void getAgents().then(setAgents).catch(() => setAgents([]))
+  }, [])
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -42,7 +47,7 @@ export function AgentQueuePage() {
       <form className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={applyFilters}>
         <label className="text-sm font-medium" htmlFor="queue-status">Status<select id="queue-status" className="mt-1 block w-full rounded border p-2" value={filters.status} onChange={event => setFilters(current => ({ ...current, status: event.target.value }))}><option value="">All statuses</option><option value="OPEN">Open</option><option value="IN_PROGRESS">In progress</option><option value="RESOLVED">Resolved</option><option value="CLOSED">Closed</option></select></label>
         <label className="text-sm font-medium" htmlFor="queue-priority">Priority<select id="queue-priority" className="mt-1 block w-full rounded border p-2" value={filters.priority} onChange={event => setFilters(current => ({ ...current, priority: event.target.value }))}><option value="">All priorities</option><option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option><option value="URGENT">Urgent</option></select></label>
-        <label className="text-sm font-medium" htmlFor="queue-assignee">Assigned agent ID<input id="queue-assignee" className="mt-1 block w-full rounded border p-2" type="number" min="1" value={filters.assignedAgentId} disabled={filters.unassigned} onChange={event => setFilters(current => ({ ...current, assignedAgentId: event.target.value }))} /></label>
+        <label className="text-sm font-medium" htmlFor="queue-assignee">Assigned agent<select id="queue-assignee" className="mt-1 block w-full rounded border p-2" value={filters.assignedAgentId} disabled={filters.unassigned} onChange={event => setFilters(current => ({ ...current, assignedAgentId: event.target.value }))}><option value="">All assigned agents</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label>
         <label className="flex items-end gap-2 pb-2 text-sm font-medium" htmlFor="queue-unassigned"><input id="queue-unassigned" type="checkbox" checked={filters.unassigned} onChange={event => setFilters(current => ({ ...current, unassigned: event.target.checked, assignedAgentId: event.target.checked ? '' : current.assignedAgentId }))} />Unassigned only</label>
         <label className="text-sm font-medium sm:col-span-2" htmlFor="queue-search">Search<input id="queue-search" className="mt-1 block w-full rounded border p-2" value={filters.search} onChange={event => setFilters(current => ({ ...current, search: event.target.value }))} placeholder="Ticket reference or title" /></label>
         <label className="text-sm font-medium" htmlFor="queue-sort">Sort<select id="queue-sort" className="mt-1 block w-full rounded border p-2" value={filters.sort} onChange={event => setFilters(current => ({ ...current, sort: event.target.value }))}><option value="updatedAt,desc">Updated, newest first</option><option value="updatedAt,asc">Updated, oldest first</option><option value="createdAt,desc">Created, newest first</option><option value="priority,asc">Priority</option><option value="status,asc">Status</option><option value="title,asc">Title</option></select></label>

@@ -5,6 +5,7 @@ import com.resolvedesk.shared.api.PageResponse;
 import com.resolvedesk.tickets.application.TicketCreationService;
 import com.resolvedesk.tickets.application.CustomerTicketWorkspaceService;
 import com.resolvedesk.tickets.application.TicketQueueQuery;
+import com.resolvedesk.tickets.application.TicketWorkflowService;
 import com.resolvedesk.tickets.history.api.TicketHistoryResponse;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -14,6 +15,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -27,13 +29,16 @@ public class TicketController {
 
     private final TicketCreationService ticketCreationService;
     private final CustomerTicketWorkspaceService customerTicketWorkspaceService;
+    private final TicketWorkflowService ticketWorkflowService;
 
     public TicketController(
             TicketCreationService ticketCreationService,
-            CustomerTicketWorkspaceService customerTicketWorkspaceService
+            CustomerTicketWorkspaceService customerTicketWorkspaceService,
+            TicketWorkflowService ticketWorkflowService
     ) {
         this.ticketCreationService = ticketCreationService;
         this.customerTicketWorkspaceService = customerTicketWorkspaceService;
+        this.ticketWorkflowService = ticketWorkflowService;
     }
 
     @PostMapping
@@ -77,5 +82,23 @@ public class TicketController {
             @PathVariable long id
     ) {
         return customerTicketWorkspaceService.getHistory(authenticatedUser.user(), id);
+    }
+
+    @PatchMapping("/{id}/assignee")
+    public TicketAssignmentMutationResponse changeAssignee(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser,
+            @PathVariable long id,
+            @Valid @RequestBody ChangeTicketAssigneeRequest request
+    ) {
+        return ticketWorkflowService.changeAssignee(authenticatedUser.user(), id, request);
+    }
+
+    @PatchMapping("/{id}/status")
+    public TicketStatusMutationResponse changeStatus(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser,
+            @PathVariable long id,
+            @Valid @RequestBody ChangeTicketStatusRequest request
+    ) {
+        return ticketWorkflowService.changeStatus(authenticatedUser.user(), id, request);
     }
 }

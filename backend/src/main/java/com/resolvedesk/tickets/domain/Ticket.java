@@ -77,6 +77,25 @@ public class Ticket {
         return new Ticket(customer, title, description);
     }
 
+    public void assignTo(User agent) {
+        assignedAgent = agent;
+    }
+
+    public void unassign() {
+        assignedAgent = null;
+    }
+
+    public void changeStatus(TicketStatus newStatus) {
+        status = newStatus;
+        if (newStatus == TicketStatus.RESOLVED) {
+            resolvedAt = Instant.now();
+        } else if (newStatus == TicketStatus.IN_PROGRESS) {
+            resolvedAt = null;
+        } else if (newStatus == TicketStatus.CLOSED) {
+            closedAt = Instant.now();
+        }
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

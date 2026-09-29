@@ -10,6 +10,10 @@ export interface TicketUserSummary {
   displayName: string
 }
 
+export interface AgentSummary extends TicketUserSummary {
+  email: string
+}
+
 export interface TicketDetail {
   id: number
   reference: string
@@ -96,4 +100,22 @@ export function getTicket(id: string): Promise<TicketDetail> {
 
 export function getTicketHistory(id: string): Promise<TicketHistoryEntry[]> {
   return apiRequest(`/tickets/${id}/history`)
+}
+
+export function getAgents(): Promise<AgentSummary[]> {
+  return apiRequest('/agents')
+}
+
+export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
+  return apiRequest(`/tickets/${id}/assignee`, {
+    method: 'PATCH',
+    body: JSON.stringify({ agentId, version })
+  }, true)
+}
+
+export function changeTicketStatus(id: number, status: TicketDetail['status'], version: number) {
+  return apiRequest(`/tickets/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status, version })
+  }, true)
 }

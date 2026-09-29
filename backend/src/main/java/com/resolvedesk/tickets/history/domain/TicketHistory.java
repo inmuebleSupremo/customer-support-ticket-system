@@ -62,6 +62,27 @@ public class TicketHistory {
         return new TicketHistory(ticket, actor);
     }
 
+    public static TicketHistory statusChanged(Ticket ticket, User actor, String oldValue, String newValue) {
+        return changed(ticket, actor, TicketEventType.STATUS_CHANGED, "status", oldValue, newValue);
+    }
+
+    public static TicketHistory assignmentChanged(Ticket ticket, User actor, Long oldAgentId, Long newAgentId) {
+        return changed(ticket, actor, TicketEventType.ASSIGNMENT_CHANGED, "assignedAgent",
+                oldAgentId == null ? null : oldAgentId.toString(),
+                newAgentId == null ? null : newAgentId.toString());
+    }
+
+    private static TicketHistory changed(
+            Ticket ticket, User actor, TicketEventType eventType, String fieldName, String oldValue, String newValue
+    ) {
+        TicketHistory history = new TicketHistory(ticket, actor);
+        history.eventType = eventType;
+        history.fieldName = fieldName;
+        history.oldValue = oldValue;
+        history.newValue = newValue;
+        return history;
+    }
+
     @PrePersist
     void onCreate() {
         createdAt = Instant.now();

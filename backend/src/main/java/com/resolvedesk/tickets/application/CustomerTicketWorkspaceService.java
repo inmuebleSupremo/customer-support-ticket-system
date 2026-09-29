@@ -10,6 +10,7 @@ import com.resolvedesk.tickets.persistence.TicketRepository;
 import com.resolvedesk.tickets.persistence.TicketSpecifications;
 import com.resolvedesk.users.domain.User;
 import com.resolvedesk.users.domain.UserRole;
+import com.resolvedesk.users.persistence.UserRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,10 +23,16 @@ public class CustomerTicketWorkspaceService {
 
     private final TicketRepository ticketRepository;
     private final TicketHistoryRepository ticketHistoryRepository;
+    private final UserRepository userRepository;
 
-    public CustomerTicketWorkspaceService(TicketRepository ticketRepository, TicketHistoryRepository ticketHistoryRepository) {
+    public CustomerTicketWorkspaceService(
+            TicketRepository ticketRepository,
+            TicketHistoryRepository ticketHistoryRepository,
+            UserRepository userRepository
+    ) {
         this.ticketRepository = ticketRepository;
         this.ticketHistoryRepository = ticketHistoryRepository;
+        this.userRepository = userRepository;
     }
 
     public PageResponse<TicketSummaryResponse> listTickets(User actor, TicketQueueQuery query) {
@@ -42,8 +49,14 @@ public class CustomerTicketWorkspaceService {
     public List<TicketHistoryResponse> getHistory(User actor, long ticketId) {
         findAccessibleTicket(actor, ticketId);
         return ticketHistoryRepository.findByTicketIdOrderByCreatedAtAsc(ticketId).stream()
-                .map(TicketHistoryResponseMapper::toResponse)
+                .map(history -> TicketHistoryResponseMapper.toResponse(history, this::agentDisplayName))
                 .toList();
+    }
+
+    private String agentDisplayName(Long userId) {
+        return userRepository.findById(userId)
+                .map(user -> user.getFirstName() + " " + user.getLastName())
+                .orElse("Unknown agent");
     }
 
     private Ticket findAccessibleTicket(User actor, long ticketId) {

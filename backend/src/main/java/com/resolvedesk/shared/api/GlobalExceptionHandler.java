@@ -3,6 +3,10 @@ package com.resolvedesk.shared.api;
 import com.resolvedesk.auth.application.EmailAlreadyExistsException;
 import com.resolvedesk.tickets.application.TicketNotFoundException;
 import com.resolvedesk.tickets.application.InvalidTicketQueryException;
+import com.resolvedesk.tickets.application.InvalidAssigneeException;
+import com.resolvedesk.tickets.application.InvalidTicketStatusTransitionException;
+import com.resolvedesk.tickets.application.StaleTicketException;
+import com.resolvedesk.tickets.application.TicketClosedException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -10,6 +14,8 @@ import org.springframework.security.authentication.AuthenticationServiceExceptio
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.core.AuthenticationException;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -43,6 +49,37 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidTicketQueryException.class)
     ResponseEntity<ProblemResponse> handleInvalidTicketQuery(InvalidTicketQueryException exception, HttpServletRequest request) {
         return problem(HttpStatus.BAD_REQUEST, "Validation failed", exception.getMessage(), "VALIDATION_ERROR", request, Map.of());
+    }
+
+    @ExceptionHandler(InvalidAssigneeException.class)
+    ResponseEntity<ProblemResponse> handleInvalidAssignee(InvalidAssigneeException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Invalid ticket assignee", exception.getMessage(), "INVALID_ASSIGNEE", request, Map.of());
+    }
+
+    @ExceptionHandler(InvalidTicketStatusTransitionException.class)
+    ResponseEntity<ProblemResponse> handleInvalidStatusTransition(InvalidTicketStatusTransitionException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Invalid ticket status transition", exception.getMessage(), "INVALID_STATUS_TRANSITION", request, Map.of());
+    }
+
+    @ExceptionHandler(TicketClosedException.class)
+    ResponseEntity<ProblemResponse> handleTicketClosed(TicketClosedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Ticket is closed", exception.getMessage(), "TICKET_CLOSED", request, Map.of());
+    }
+
+    @ExceptionHandler(StaleTicketException.class)
+    ResponseEntity<ProblemResponse> handleStaleTicket(StaleTicketException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Ticket has changed", exception.getMessage(), "STALE_RESOURCE", request, Map.of());
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    ResponseEntity<ProblemResponse> handleOptimisticLockingFailure(ObjectOptimisticLockingFailureException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Ticket has changed", "This ticket was modified by another user. Reload the ticket and try again.",
+                "STALE_RESOURCE", request, Map.of());
+    }
+
+    @ExceptionHandler(AccessDeniedException.class)
+    ResponseEntity<ProblemResponse> handleControllerAccessDenied(AccessDeniedException exception, HttpServletRequest request) {
+        return problem(HttpStatus.FORBIDDEN, "Access denied", "You are not permitted to perform this action.", "ACCESS_DENIED", request, Map.of());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)
