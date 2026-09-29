@@ -137,7 +137,7 @@ class CustomerTicketWorkspaceIntegrationTests {
         User agent = userRepository.saveAndFlush(User.create("agent@example.com", "hash", "Test", "Agent", UserRole.AGENT));
 
         mockMvc.perform(get("/api/v1/tickets")).andExpect(status().isUnauthorized());
-        mockMvc.perform(get("/api/v1/tickets").with(customerAuthentication(agent))).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/tickets").with(customerAuthentication(agent))).andExpect(status().isOk());
     }
 
     private Ticket persistedTicket(User customer, String title) {

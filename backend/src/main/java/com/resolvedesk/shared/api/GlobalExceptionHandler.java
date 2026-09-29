@@ -2,6 +2,7 @@ package com.resolvedesk.shared.api;
 
 import com.resolvedesk.auth.application.EmailAlreadyExistsException;
 import com.resolvedesk.tickets.application.TicketNotFoundException;
+import com.resolvedesk.tickets.application.InvalidTicketQueryException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -37,6 +38,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TicketNotFoundException.class)
     ResponseEntity<ProblemResponse> handleTicketNotFound(TicketNotFoundException exception, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "Ticket not found", exception.getMessage(), "RESOURCE_NOT_FOUND", request, Map.of());
+    }
+
+    @ExceptionHandler(InvalidTicketQueryException.class)
+    ResponseEntity<ProblemResponse> handleInvalidTicketQuery(InvalidTicketQueryException exception, HttpServletRequest request) {
+        return problem(HttpStatus.BAD_REQUEST, "Validation failed", exception.getMessage(), "VALIDATION_ERROR", request, Map.of());
     }
 
     @ExceptionHandler(HttpMessageNotReadableException.class)

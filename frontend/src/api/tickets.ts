@@ -61,12 +61,33 @@ export interface PageResponse<T> {
   last: boolean
 }
 
+export interface TicketListQuery {
+  status?: TicketDetail['status']
+  priority?: TicketDetail['priority']
+  assignedAgentId?: string
+  unassigned?: boolean
+  search?: string
+  page?: number
+  size?: number
+  sort?: string
+}
+
 export function createTicket(input: CreateTicketInput): Promise<TicketDetail> {
   return apiRequest('/tickets', { method: 'POST', body: JSON.stringify(input) }, true)
 }
 
-export function listTickets(): Promise<PageResponse<TicketSummary>> {
-  return apiRequest('/tickets')
+export function listTickets(query: TicketListQuery = {}): Promise<PageResponse<TicketSummary>> {
+  const params = new URLSearchParams()
+  if (query.status) params.set('status', query.status)
+  if (query.priority) params.set('priority', query.priority)
+  if (query.assignedAgentId) params.set('assignedAgentId', query.assignedAgentId)
+  if (query.unassigned) params.set('unassigned', 'true')
+  if (query.search) params.set('search', query.search)
+  if (query.page !== undefined) params.set('page', String(query.page))
+  if (query.size !== undefined) params.set('size', String(query.size))
+  if (query.sort) params.set('sort', query.sort)
+  const suffix = params.size > 0 ? `?${params.toString()}` : ''
+  return apiRequest(`/tickets${suffix}`)
 }
 
 export function getTicket(id: string): Promise<TicketDetail> {

@@ -4,10 +4,9 @@ import com.resolvedesk.auth.application.AuthenticatedUser;
 import com.resolvedesk.shared.api.PageResponse;
 import com.resolvedesk.tickets.application.TicketCreationService;
 import com.resolvedesk.tickets.application.CustomerTicketWorkspaceService;
+import com.resolvedesk.tickets.application.TicketQueueQuery;
 import com.resolvedesk.tickets.history.api.TicketHistoryResponse;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -19,14 +18,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.validation.annotation.Validated;
 
-import java.net.URI;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/tickets")
-@Validated
 public class TicketController {
 
     private final TicketCreationService ticketCreationService;
@@ -54,10 +50,17 @@ public class TicketController {
     @GetMapping
     public PageResponse<TicketSummaryResponse> listTickets(
             @AuthenticationPrincipal AuthenticatedUser authenticatedUser,
-            @RequestParam(defaultValue = "0") @Min(0) int page,
-            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String assignedAgentId,
+            @RequestParam(required = false) String unassigned,
+            @RequestParam(required = false) String search,
+            @RequestParam(defaultValue = "0") String page,
+            @RequestParam(defaultValue = "20") String size,
+            @RequestParam(defaultValue = "updatedAt,desc") String sort
     ) {
-        return customerTicketWorkspaceService.listTickets(authenticatedUser.user(), page, size);
+        return customerTicketWorkspaceService.listTickets(authenticatedUser.user(),
+                TicketQueueQuery.from(status, priority, assignedAgentId, unassigned, search, page, size, sort));
     }
 
     @GetMapping("/{id}")

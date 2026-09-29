@@ -7,9 +7,10 @@ import com.resolvedesk.tickets.domain.Ticket;
 import com.resolvedesk.tickets.history.api.TicketHistoryResponse;
 import com.resolvedesk.tickets.history.persistence.TicketHistoryRepository;
 import com.resolvedesk.tickets.persistence.TicketRepository;
+import com.resolvedesk.tickets.persistence.TicketSpecifications;
 import com.resolvedesk.users.domain.User;
+import com.resolvedesk.users.domain.UserRole;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,8 +20,6 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class CustomerTicketWorkspaceService {
 
-    private static final Sort DEFAULT_SORT = Sort.by(Sort.Direction.DESC, "updatedAt");
-
     private final TicketRepository ticketRepository;
     private final TicketHistoryRepository ticketHistoryRepository;
 
@@ -29,26 +28,29 @@ public class CustomerTicketWorkspaceService {
         this.ticketHistoryRepository = ticketHistoryRepository;
     }
 
-    public PageResponse<TicketSummaryResponse> listTickets(User customer, int page, int size) {
+    public PageResponse<TicketSummaryResponse> listTickets(User actor, TicketQueueQuery query) {
         return PageResponse.from(
-                ticketRepository.findByCustomerId(customer.getId(), PageRequest.of(page, size, DEFAULT_SORT)),
+                ticketRepository.findAll(TicketSpecifications.queueFor(actor, query), PageRequest.of(query.page(), query.size(), query.sort())),
                 TicketResponseMapper::toSummary
         );
     }
 
-    public TicketDetailResponse getTicket(User customer, long ticketId) {
-        return TicketResponseMapper.toDetail(findOwnedTicket(customer, ticketId));
+    public TicketDetailResponse getTicket(User actor, long ticketId) {
+        return TicketResponseMapper.toDetail(findAccessibleTicket(actor, ticketId));
     }
 
-    public List<TicketHistoryResponse> getHistory(User customer, long ticketId) {
-        findOwnedTicket(customer, ticketId);
+    public List<TicketHistoryResponse> getHistory(User actor, long ticketId) {
+        findAccessibleTicket(actor, ticketId);
         return ticketHistoryRepository.findByTicketIdOrderByCreatedAtAsc(ticketId).stream()
                 .map(TicketHistoryResponseMapper::toResponse)
                 .toList();
     }
 
-    private Ticket findOwnedTicket(User customer, long ticketId) {
-        return ticketRepository.findByIdAndCustomerId(ticketId, customer.getId())
-                .orElseThrow(TicketNotFoundException::new);
+    private Ticket findAccessibleTicket(User actor, long ticketId) {
+        if (actor.getRole() == UserRole.CUSTOMER) {
+            return ticketRepository.findByIdAndCustomerId(ticketId, actor.getId())
+                    .orElseThrow(TicketNotFoundException::new);
+        }
+        return ticketRepository.findById(ticketId).orElseThrow(TicketNotFoundException::new);
     }
 }

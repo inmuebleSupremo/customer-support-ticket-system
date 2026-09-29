@@ -4,6 +4,7 @@ import { AppRouter } from './router'
 import type { CurrentUser } from '../api/auth'
 
 const authenticatedUser = { id: 17, firstName: 'Alex', lastName: 'Morgan', email: 'alex@example.com', role: 'CUSTOMER' as const, active: true, createdAt: '2026-09-29T10:00:00Z' }
+const agentUser = { id: 8, firstName: 'Maria', lastName: 'Garcia', email: 'maria@example.com', role: 'AGENT' as const, active: true, createdAt: '2026-09-29T10:00:00Z' }
 const ticket = { id: 42, reference: 'SUP-42', title: 'Cannot sign in', description: 'I cannot sign in to my ResolveDesk account.', status: 'OPEN' as const, priority: 'MEDIUM' as const, customer: { id: 17, displayName: 'Alex Morgan' }, assignedAgent: null, createdAt: '2026-09-29T10:00:00Z', updatedAt: '2026-09-29T10:00:00Z', resolvedAt: null, closedAt: null, version: 0 }
 const createdHistory = [{ id: 700, eventType: 'TICKET_CREATED' as const, fieldName: null, oldValue: null, newValue: null, oldDisplayValue: null, newDisplayValue: null, actor: { id: 17, displayName: 'Alex Morgan' }, createdAt: '2026-09-29T10:00:00Z' }]
 
@@ -208,6 +209,79 @@ describe('customer ticket workspace', () => {
   it('keeps workspace routes protected for non-customers', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...authenticatedUser, role: 'AGENT' }))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
+  })
+})
+
+describe('agent ticket queue', () => {
+  const fetchMock = vi.fn()
+  const queuePage = { content: [{ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' } }], page: 0, size: 20, totalElements: 21, totalPages: 2, first: true, last: false }
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/queue')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreAgentSession() {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agentUser))
+  }
+
+  it('renders the support queue as a table for an agent', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Ticket queue' })).toBeInTheDocument()
+    expect(await screen.findByRole('table')).toBeInTheDocument()
+    expect(screen.getByText('Maria Garcia')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' }))
+  })
+
+  it('renders the empty queue state', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
+    render(<AppRouter />)
+    expect(await screen.findByText('No tickets match the current queue filters.')).toBeInTheDocument()
+  })
+
+  it('submits filters, reference search, and sort changes through the API layer', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Ticket queue' })
+    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'OPEN' } })
+    fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'HIGH' } })
+    fireEvent.change(screen.getByLabelText('Assigned agent ID'), { target: { value: '8' } })
+    fireEvent.change(screen.getByLabelText('Search'), { target: { value: 'SUP-42' } })
+    fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'title,asc' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
+  })
+
+  it('requests the next page and navigates to a queue ticket detail', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...queuePage, page: 1, first: false, last: true }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Ticket queue' })
+    await screen.findByRole('table')
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?page=1&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
+    fireEvent.click(screen.getByRole('link', { name: 'SUP-42' }))
+    expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Back to support queue' })).toBeInTheDocument()
+  })
+
+  it('keeps the queue route unavailable to customers', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(authenticatedUser))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
   })
