@@ -6,6 +6,8 @@ import { ProtectedRoute } from '../features/auth/ProtectedRoute'
 import { RegisterPage } from '../features/auth/RegisterPage'
 import { IdentityHome } from '../features/home/IdentityHome'
 import { NotFoundPage } from '../features/home/NotFoundPage'
+import { CreateTicketPage } from '../features/tickets/CreateTicketPage'
+import { TicketCreatedPage } from '../features/tickets/TicketCreatedPage'
 
 export function AppRouter() {
   return (
@@ -17,6 +19,10 @@ export function AppRouter() {
             <Route path="register" element={<RegisterPage />} />
             <Route element={<ProtectedRoute />}>
               <Route index element={<IdentityHome />} />
+            </Route>
+            <Route element={<ProtectedRoute allowedRoles={['CUSTOMER']} />}>
+              <Route path="tickets/new" element={<CreateTicketPage />} />
+              <Route path="tickets/created/:ticketId" element={<TicketCreatedPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

@@ -16,12 +16,12 @@ class FlywayFoundationTests {
     private JdbcTemplate jdbcTemplate;
 
     @Test
-    void flywayCreatesTheVersionedUsersSchema() {
-        Integer usersTableCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND UPPER(TABLE_NAME) = 'USERS'",
+    void flywayCreatesTheVersionedFoundationAndTicketSchemas() {
+        Integer tableCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND UPPER(TABLE_NAME) IN ('USERS', 'TICKETS', 'TICKET_HISTORY')",
                 Integer.class
         );
 
-        assertThat(usersTableCount).isEqualTo(1);
+        assertThat(tableCount).isEqualTo(3);
     }
 }
