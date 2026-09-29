@@ -1,0 +1,376 @@
+# Implementation Brief
+
+## Project Objective
+
+Build **ResolveDesk**, a professional full-stack customer support ticket management application intended primarily as a software-engineering portfolio project.
+
+The application should demonstrate the design and implementation of a realistic business workflow rather than functioning as a generic CRUD application.
+
+ResolveDesk allows:
+
+- Customers to register, authenticate, create support tickets, follow ticket progress, comment on active tickets, and reopen eligible resolved tickets.
+- Support Agents to manage the support queue, assign tickets, change priority, update ticket status, communicate with customers, and review ticket history.
+- Administrators to manage users and perform support operations.
+
+The application must prioritize correct business behaviour, maintainability, security, testing, and clear architecture over feature quantity.
+
+---
+
+## Authoritative Specifications
+
+The following documents define the product and must be treated as authoritative:
+
+1. **ResolveDesk — Product Requirements Document**
+2. **ResolveDesk — Domain Model & ERD Specification**
+3. **ResolveDesk — REST API Contract**
+4. **ResolveDesk — Implementation Guardrails**
+
+Before implementing functionality, read all four documents in full.
+
+If implementation details appear ambiguous, prefer the interpretation that:
+
+- preserves the documented business rules;
+- does not expand MVP scope;
+- maintains the existing API contract;
+- keeps the architecture straightforward and maintainable.
+
+Do not silently change documented requirements.
+
+If a genuine contradiction is discovered, identify it before implementing the affected functionality.
+
+---
+
+## Technology Stack
+
+### Backend
+
+- Java
+- Spring Boot
+- Spring Web
+- Spring Data JPA
+- Spring Security
+- Jakarta Bean Validation
+- MySQL 8+
+- Flyway
+- Maven
+- OpenAPI / Swagger
+- JUnit
+- Mockito
+- Testcontainers where appropriate
+
+### Frontend
+
+- React
+- TypeScript
+- Tailwind CSS
+- React Router
+
+Additional frontend libraries should only be introduced when they provide clear value.
+
+Avoid unnecessary dependencies.
+
+### Infrastructure
+
+- Docker / Docker Compose
+- GitHub Actions for CI
+- environment-based configuration
+- `.env.example` for documented local configuration
+
+---
+
+## Core Domain
+
+The MVP contains four primary persistent domain entities:
+
+- User
+- Ticket
+- Comment
+- TicketHistory
+
+Core ticket workflow:
+
+```text
+OPEN
+  ↓
+IN_PROGRESS
+  ↓
+RESOLVED
+  ↓
+CLOSED
+```
+
+Additional permitted transitions are defined in the Domain Model specification.
+
+Ticket status must not be treated as an arbitrary editable field.
+
+Status changes are business operations and must be validated by backend domain/service logic.
+
+---
+
+## Core Engineering Principles
+
+The implementation must follow these principles:
+
+### Backend authorization is authoritative
+
+The frontend may hide unavailable controls, but authorization must always be enforced by Spring Security and/or backend business logic.
+
+### Controllers remain thin
+
+Controllers should handle HTTP concerns and delegate business behaviour to application/service logic.
+
+### JPA entities are not API models
+
+REST endpoints must use request and response DTOs.
+
+### Business operations are explicit
+
+Operations such as:
+
+- assigning a ticket;
+- changing status;
+- changing priority;
+- reopening a ticket;
+
+must use dedicated business methods rather than arbitrary entity field updates.
+
+### Audit history is reliable
+
+Significant ticket changes must create immutable TicketHistory records in the same transaction as the underlying change.
+
+### Core records are preserved
+
+Tickets, comments, and ticket history are not hard-deleted in MVP v1.
+
+Users are deactivated rather than deleted.
+
+### Concurrency must be considered
+
+Ticket updates use optimistic locking so that concurrent agent updates cannot silently overwrite one another.
+
+---
+
+## Scope Discipline
+
+Implement only the MVP described in the specification.
+
+Do not introduce features such as:
+
+- WebSockets;
+- microservices;
+- Kafka;
+- Redis;
+- Kubernetes;
+- AI functionality;
+- file attachments;
+- email integration;
+- real-time chat;
+- SLA systems;
+- multi-tenancy;
+- advanced analytics;
+- OAuth;
+- GraphQL;
+
+unless the project specification is explicitly updated.
+
+Prefer a well-tested, understandable implementation of the documented MVP over additional features.
+
+---
+
+## Development Approach
+
+Do not attempt to generate the entire application in one pass.
+
+Implement ResolveDesk incrementally using small, working vertical slices.
+
+A recommended progression is:
+
+```text
+1. Repository and project scaffolding
+
+2. Database configuration + Flyway
+
+3. User domain and persistence
+
+4. Authentication and authorization
+
+5. Customer ticket creation
+
+6. Customer ticket list
+
+7. Ticket detail
+
+8. Agent ticket queue
+
+9. Ticket assignment
+
+10. Status workflow
+
+11. Priority management
+
+12. Comments
+
+13. Ticket history
+
+14. Search / filtering / sorting / pagination
+
+15. Administration
+
+16. Integration and security testing
+
+17. Docker and CI
+
+18. UI polish and documentation
+```
+
+Each stage should leave the application in a working state.
+
+---
+
+## Testing Expectations
+
+Testing is part of implementation, not a final cleanup phase.
+
+Important business rules should receive automated tests as they are introduced.
+
+High-priority scenarios include:
+
+```text
+Customer can create a ticket.
+
+Customer cannot access another customer's ticket.
+
+Customer cannot assign a ticket.
+
+Customer cannot change priority.
+
+Agent can assign an eligible ticket.
+
+Inactive user cannot authenticate.
+
+OPEN can transition to IN_PROGRESS.
+
+OPEN cannot transition directly to CLOSED.
+
+IN_PROGRESS can transition to RESOLVED.
+
+RESOLVED can be reopened.
+
+CLOSED tickets cannot receive comments.
+
+Status changes create history records.
+
+Assignment changes create history records.
+
+Concurrent stale updates are rejected.
+
+Agent with active assigned tickets cannot be deactivated.
+
+Final active administrator cannot be removed/deactivated.
+```
+
+Tests should focus on meaningful behaviour rather than maximizing coverage percentage.
+
+---
+
+## API Compatibility
+
+The REST API Contract defines the expected client/server interface.
+
+Implementation should match:
+
+- documented endpoint paths;
+- HTTP methods;
+- authorization behaviour;
+- request DTOs;
+- response DTOs;
+- pagination structure;
+- HTTP status codes;
+- standard error format;
+- concurrency behaviour.
+
+If implementation requires changing the public API contract, the contract should be updated deliberately rather than silently diverging from it.
+
+---
+
+## Repository Quality
+
+The repository itself is part of the portfolio deliverable.
+
+The final repository should make it easy for another developer or prospective employer to understand:
+
+- what the application does;
+- how it is structured;
+- how to run it;
+- how to test it;
+- how the database is created;
+- what major engineering decisions were made.
+
+Implementation should therefore favour:
+
+- meaningful names;
+- small focused commits;
+- understandable package structure;
+- useful automated tests;
+- documented setup;
+- reproducible database migrations;
+- clean configuration;
+- minimal unnecessary complexity.
+
+---
+
+## Definition of Done
+
+ResolveDesk MVP is complete when a user can successfully perform the full workflow:
+
+```text
+Customer registers
+        ↓
+Customer logs in
+        ↓
+Customer creates ticket
+        ↓
+Agent sees ticket in support queue
+        ↓
+Agent assigns ticket
+        ↓
+Agent moves ticket to IN_PROGRESS
+        ↓
+Customer and agent communicate
+        ↓
+Agent resolves ticket
+        ↓
+Customer may reopen if necessary
+        ↓
+Agent eventually resolves and closes ticket
+        ↓
+Entire lifecycle remains visible in ticket history
+```
+
+In addition:
+
+- permissions must be enforced server-side;
+- invalid workflow operations must be rejected;
+- important business behaviour must be tested;
+- database creation must be reproducible through Flyway;
+- the project must be runnable from documented local setup instructions;
+- the repository must not contain secrets;
+- frontend and backend must integrate through the documented REST API.
+
+---
+
+## Initial Codex Task
+
+Before writing production application code:
+
+1. Read all supplied ResolveDesk specifications and this implementation brief.
+2. Identify contradictions, ambiguities, or genuinely blocking missing decisions.
+3. Do not expand MVP scope.
+4. Propose the repository and package structure.
+5. Produce an incremental implementation plan using vertical slices.
+6. Map each implementation phase to relevant requirements.
+7. Identify which automated tests should accompany each phase.
+
+Do **not** generate the entire application at this stage.
+
+Once the implementation plan has been reviewed, begin with the first agreed implementation phase and work incrementally.

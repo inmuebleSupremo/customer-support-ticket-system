@@ -1,0 +1,1658 @@
+# ResolveDesk — Domain Model & ERD Specification
+
+**Document version:** 0.1  
+**Related document:** Product Requirements Document v0.1  
+**Database:** MySQL 8+  
+**Persistence layer:** Spring Data JPA / Hibernate  
+**Migration tool:** Flyway
+
+---
+
+# 1. Purpose
+
+This document translates the ResolveDesk product requirements into a concrete domain and relational data model.
+
+It defines:
+
+- domain entities;
+- entity responsibilities;
+- fields and data types;
+- relationships;
+- cardinality;
+- nullability;
+- database constraints;
+- lifecycle rules;
+- deletion strategy;
+- indexing strategy;
+- audit behaviour;
+- concurrency considerations.
+
+This specification should be agreed before implementing JPA entities or database migrations.
+
+---
+
+# 2. Core Design Principles
+
+The database model should follow several principles.
+
+## 2.1 Business rules belong in the application
+
+Database constraints should protect fundamental data integrity, while business rules such as permitted status transitions belong primarily in the Spring service/domain layer.
+
+For example:
+
+The database can ensure that a ticket has a valid status.
+
+The Spring application must determine whether:
+
+`OPEN → IN_PROGRESS`
+
+is permitted while:
+
+`OPEN → CLOSED`
+
+is rejected.
+
+---
+
+## 2.2 Important business records are not physically deleted
+
+Tickets, comments, and ticket-history records represent business activity.
+
+They should therefore remain available after creation.
+
+The MVP will not support hard deletion of:
+
+- tickets;
+- comments;
+- ticket history.
+
+Users will be deactivated rather than deleted.
+
+---
+
+## 2.3 Historical information should remain explainable
+
+Ticket changes must be traceable.
+
+A ticket's current state exists in the `tickets` table.
+
+Important state changes are additionally recorded in `ticket_history`.
+
+---
+
+## 2.4 Application roles and states should use controlled values
+
+The following domain concepts are finite enumerations:
+
+- UserRole
+- TicketStatus
+- TicketPriority
+- TicketEventType
+
+In Java these should be enums.
+
+In MySQL they should be stored as readable strings rather than ordinal numbers.
+
+For example:
+
+`IN_PROGRESS`
+
+rather than:
+
+`2`
+
+This prevents changing enum ordering from corrupting persisted meaning.
+
+---
+
+# 3. Domain Entities
+
+ResolveDesk MVP contains four primary entities:
+
+1. User
+2. Ticket
+3. Comment
+4. TicketHistory
+
+Relationship overview:
+
+```text
+User
+ ├── creates ────────────────┐
+ │                           ▼
+ │                        Ticket
+ │                           │
+ │                           ├──── contains ──── Comment
+ │                           │                     ▲
+ │                           │                     │
+ │                           │                  authored by
+ │                           │                     │
+ │                           │                     User
+ │                           │
+ │                           └──── has ────── TicketHistory
+ │                                               ▲
+ │                                               │
+ └──────── performs changes ─────────────────────┘
+```
+
+A User may participate in different relationships depending on their role.
+
+---
+
+# 4. Entity: User
+
+## 4.1 Responsibility
+
+`User` represents an authenticated ResolveDesk account.
+
+A user has exactly one application role:
+
+- CUSTOMER
+- AGENT
+- ADMIN
+
+Users are never physically deleted in the MVP.
+
+Accounts may instead be deactivated.
+
+---
+
+# 5. User Fields
+
+| Field | Java Type | MySQL Type | Null? | Notes |
+|---|---|---|---|---|
+| id | Long | BIGINT | No | Primary key |
+| email | String | VARCHAR(254) | No | Unique, normalized lowercase |
+| passwordHash | String | VARCHAR(255) | No | Secure password hash |
+| firstName | String | VARCHAR(100) | No | |
+| lastName | String | VARCHAR(100) | No | |
+| role | UserRole | VARCHAR(20) | No | CUSTOMER / AGENT / ADMIN |
+| active | boolean | BOOLEAN | No | Default TRUE |
+| createdAt | Instant | DATETIME(6) | No | UTC |
+| updatedAt | Instant | DATETIME(6) | No | UTC |
+
+---
+
+# 6. User Constraints
+
+Database constraints:
+
+```text
+PRIMARY KEY (id)
+
+UNIQUE (email)
+
+email NOT NULL
+password_hash NOT NULL
+first_name NOT NULL
+last_name NOT NULL
+role NOT NULL
+active NOT NULL
+```
+
+Application rules:
+
+- email is normalized before persistence;
+- self-registration always creates CUSTOMER users;
+- only Administrators may change user roles;
+- inactive users cannot authenticate;
+- inactive agents cannot receive new ticket assignments.
+
+Passwords are never stored directly.
+
+Only the password hash is persisted.
+
+---
+
+# 7. UserRole Enumeration
+
+```text
+CUSTOMER
+AGENT
+ADMIN
+```
+
+Java:
+
+```text
+UserRole
+```
+
+The database value should be stored using enum names.
+
+Do not use enum ordinals.
+
+---
+
+# 8. Entity: Ticket
+
+## 8.1 Responsibility
+
+`Ticket` is the central aggregate in ResolveDesk.
+
+It represents one customer support request and stores its current operational state.
+
+A ticket belongs to exactly one customer.
+
+A ticket may be assigned to zero or one support agent.
+
+---
+
+# 9. Ticket Fields
+
+| Field | Java Type | MySQL Type | Null? | Notes |
+|---|---|---|---|---|
+| id | Long | BIGINT | No | Primary key |
+| customerId | Long | BIGINT | No | FK → users.id |
+| assignedAgentId | Long | BIGINT | Yes | FK → users.id |
+| title | String | VARCHAR(120) | No | |
+| description | String | TEXT | No | |
+| status | TicketStatus | VARCHAR(30) | No | |
+| priority | TicketPriority | VARCHAR(20) | No | |
+| createdAt | Instant | DATETIME(6) | No | UTC |
+| updatedAt | Instant | DATETIME(6) | No | Last ticket activity |
+| resolvedAt | Instant | DATETIME(6) | Yes | Current resolution timestamp |
+| closedAt | Instant | DATETIME(6) | Yes | Final closure timestamp |
+| version | Long | BIGINT | No | Optimistic locking |
+
+---
+
+# 10. Human-Readable Ticket Number
+
+The application requires identifiers such as:
+
+```text
+SUP-1042
+```
+
+The MVP does **not** need a second ticket-number column.
+
+Instead, the public ticket number will be derived from the immutable database ID.
+
+Example:
+
+```text
+database id = 1042
+
+public ticket reference = SUP-1042
+```
+
+This avoids storing two identifiers that represent the same thing.
+
+Benefits:
+
+- guaranteed uniqueness;
+- no separate sequence mechanism;
+- no duplicated data;
+- no ticket-number synchronization problems.
+
+The application should contain a dedicated formatter/parser for public ticket references rather than scattering `"SUP-" + id` throughout the codebase.
+
+For example:
+
+```text
+TicketReference
+```
+
+could convert:
+
+```text
+1042 → SUP-1042
+SUP-1042 → 1042
+```
+
+---
+
+# 11. TicketStatus Enumeration
+
+```text
+OPEN
+IN_PROGRESS
+RESOLVED
+CLOSED
+```
+
+---
+
+# 12. TicketPriority Enumeration
+
+```text
+LOW
+MEDIUM
+HIGH
+URGENT
+```
+
+New tickets default to:
+
+```text
+MEDIUM
+```
+
+---
+
+# 13. Ticket Relationships
+
+## Customer relationship
+
+```text
+User 1 ─────────── 0..* Ticket
+       creates
+```
+
+Each Ticket must have exactly one customer.
+
+A Customer may create any number of tickets.
+
+Database relationship:
+
+```text
+tickets.customer_id
+    → users.id
+```
+
+`customer_id` is mandatory.
+
+---
+
+## Assigned Agent relationship
+
+```text
+User 1 ─────────── 0..* Ticket
+       assigned
+```
+
+From the Ticket perspective:
+
+```text
+Ticket → 0..1 assigned Agent
+```
+
+An unassigned ticket therefore has:
+
+```text
+assigned_agent_id = NULL
+```
+
+The foreign key itself cannot guarantee that the referenced user has an AGENT role.
+
+The application service layer must enforce:
+
+```text
+assigned user role ∈ {AGENT, ADMIN if permitted}
+```
+
+For the MVP, normal assignment targets should be users with the `AGENT` role.
+
+---
+
+# 14. Ticket Creation Rules
+
+A newly created ticket must have:
+
+```text
+customer       = authenticated customer
+assignedAgent  = null
+status         = OPEN
+priority       = MEDIUM
+createdAt      = current UTC time
+updatedAt      = current UTC time
+resolvedAt     = null
+closedAt       = null
+```
+
+Customers cannot supply values for:
+
+- customer;
+- assigned agent;
+- status;
+- priority;
+- timestamps.
+
+Those values are generated or controlled by the backend.
+
+---
+
+# 15. Ticket Lifecycle Rules
+
+Allowed transitions:
+
+```text
+OPEN
+ │
+ ▼
+IN_PROGRESS
+ │      ▲
+ │      │ reopen
+ ▼      │
+RESOLVED
+ │
+ ▼
+CLOSED
+```
+
+Also permitted:
+
+```text
+IN_PROGRESS → OPEN
+```
+
+Full matrix:
+
+| From | To | Allowed |
+|---|---|---:|
+| OPEN | IN_PROGRESS | Yes |
+| OPEN | RESOLVED | No |
+| OPEN | CLOSED | No |
+| IN_PROGRESS | OPEN | Yes |
+| IN_PROGRESS | RESOLVED | Yes |
+| IN_PROGRESS | CLOSED | No |
+| RESOLVED | IN_PROGRESS | Yes |
+| RESOLVED | CLOSED | Yes |
+| CLOSED | OPEN | No |
+| CLOSED | IN_PROGRESS | No |
+| CLOSED | RESOLVED | No |
+
+No transition originates from CLOSED in MVP v1.
+
+---
+
+# 16. Timestamp Behaviour During Status Changes
+
+## Transition to RESOLVED
+
+When:
+
+```text
+IN_PROGRESS → RESOLVED
+```
+
+set:
+
+```text
+resolved_at = current UTC time
+```
+
+---
+
+## Reopening a resolved ticket
+
+When:
+
+```text
+RESOLVED → IN_PROGRESS
+```
+
+set:
+
+```text
+resolved_at = NULL
+```
+
+The previous resolution event remains permanently recorded in `ticket_history`.
+
+This means `resolved_at` represents the ticket's **current resolution state**, while history preserves previous resolutions.
+
+---
+
+## Transition to CLOSED
+
+When:
+
+```text
+RESOLVED → CLOSED
+```
+
+set:
+
+```text
+closed_at = current UTC time
+```
+
+The ticket becomes terminal/read-only.
+
+---
+
+# 17. Ticket `updatedAt` Semantics
+
+`updated_at` represents the latest meaningful activity associated with the ticket.
+
+It should change when:
+
+- status changes;
+- priority changes;
+- assignment changes;
+- a comment is added.
+
+This makes ticket sorting by recent activity useful.
+
+Example:
+
+```text
+ORDER BY updated_at DESC
+```
+
+shows recently active tickets first.
+
+---
+
+# 18. Optimistic Locking
+
+Tickets may be viewed or modified by multiple agents simultaneously.
+
+ResolveDesk should therefore use JPA optimistic locking.
+
+Ticket contains:
+
+```text
+version BIGINT NOT NULL
+```
+
+Java:
+
+```java
+@Version
+private Long version;
+```
+
+Example scenario:
+
+1. Agent A loads ticket version 7.
+2. Agent B loads ticket version 7.
+3. Agent A changes priority.
+4. Database ticket becomes version 8.
+5. Agent B attempts to update stale version 7.
+6. The update is rejected as a concurrency conflict.
+
+This prevents one agent silently overwriting another agent's changes.
+
+The eventual API should convert this situation into an appropriate conflict response rather than a generic server error.
+
+---
+
+# 19. Entity: Comment
+
+## 19.1 Responsibility
+
+A `Comment` represents communication attached to a ticket.
+
+Comments may be written by:
+
+- the owning Customer;
+- Agents;
+- Administrators.
+
+Comments are treated as immutable business records in MVP v1.
+
+There is no edit or delete functionality.
+
+---
+
+# 20. Comment Fields
+
+| Field | Java Type | MySQL Type | Null? | Notes |
+|---|---|---|---|---|
+| id | Long | BIGINT | No | Primary key |
+| ticketId | Long | BIGINT | No | FK → tickets.id |
+| authorId | Long | BIGINT | No | FK → users.id |
+| content | String | TEXT | No | Max validated by app |
+| createdAt | Instant | DATETIME(6) | No | UTC |
+
+No `updatedAt` field is necessary because comments cannot be edited.
+
+---
+
+# 21. Comment Relationships
+
+```text
+Ticket 1 ─────────── 0..* Comment
+```
+
+Each comment belongs to exactly one ticket.
+
+```text
+User 1 ───────────── 0..* Comment
+```
+
+Each comment has exactly one author.
+
+---
+
+# 22. Comment Business Rules
+
+A comment may be added only when:
+
+```text
+ticket.status != CLOSED
+```
+
+Customers additionally require:
+
+```text
+ticket.customer_id == authenticatedUser.id
+```
+
+Agents and Administrators may comment on tickets they are authorized to access.
+
+Comment content:
+
+```text
+minimum: 1 meaningful character
+maximum: 3000 characters
+```
+
+Whitespace-only comments are invalid.
+
+Adding a comment should also update:
+
+```text
+ticket.updated_at
+```
+
+---
+
+# 23. Entity: TicketHistory
+
+## 23.1 Responsibility
+
+`TicketHistory` provides an immutable audit trail of important ticket state changes.
+
+It is not the same thing as comments.
+
+Comments represent conversation.
+
+TicketHistory represents system/business events.
+
+---
+
+# 24. TicketHistory Fields
+
+| Field | Java Type | MySQL Type | Null? | Notes |
+|---|---|---|---|---|
+| id | Long | BIGINT | No | Primary key |
+| ticketId | Long | BIGINT | No | FK → tickets.id |
+| actorUserId | Long | BIGINT | No | User responsible |
+| eventType | TicketEventType | VARCHAR(40) | No | |
+| fieldName | String | VARCHAR(50) | Yes | Changed field |
+| oldValue | String | VARCHAR(255) | Yes | Previous value |
+| newValue | String | VARCHAR(255) | Yes | New value |
+| createdAt | Instant | DATETIME(6) | No | UTC |
+
+---
+
+# 25. TicketEventType Enumeration
+
+Initial event types:
+
+```text
+TICKET_CREATED
+STATUS_CHANGED
+PRIORITY_CHANGED
+ASSIGNMENT_CHANGED
+```
+
+This can be expanded later without redesigning the entire table.
+
+---
+
+# 26. Example History Records
+
+## Ticket creation
+
+```text
+eventType:
+TICKET_CREATED
+
+fieldName:
+NULL
+
+oldValue:
+NULL
+
+newValue:
+NULL
+```
+
+---
+
+## Status change
+
+```text
+eventType:
+STATUS_CHANGED
+
+fieldName:
+status
+
+oldValue:
+OPEN
+
+newValue:
+IN_PROGRESS
+```
+
+---
+
+## Priority change
+
+```text
+eventType:
+PRIORITY_CHANGED
+
+fieldName:
+priority
+
+oldValue:
+MEDIUM
+
+newValue:
+HIGH
+```
+
+---
+
+## Assignment
+
+```text
+eventType:
+ASSIGNMENT_CHANGED
+
+fieldName:
+assignedAgent
+
+oldValue:
+NULL
+
+newValue:
+17
+```
+
+Where `17` represents the assigned user's identifier.
+
+---
+
+## Reassignment
+
+```text
+oldValue:
+17
+
+newValue:
+23
+```
+
+---
+
+## Unassignment
+
+```text
+oldValue:
+23
+
+newValue:
+NULL
+```
+
+---
+
+# 27. What Does NOT Create TicketHistory
+
+Comments do not require duplicate history records.
+
+A new comment already creates its own immutable database record containing:
+
+- author;
+- ticket;
+- content;
+- timestamp.
+
+Creating a second `COMMENT_ADDED` ticket-history record would duplicate information without adding meaningful audit value.
+
+---
+
+# 28. TicketHistory Immutability
+
+Ticket history cannot be:
+
+- edited;
+- deleted;
+- directly created through public API endpoints.
+
+History entries are created only by business operations in the backend.
+
+For example:
+
+```text
+changeStatus()
+```
+
+should perform both:
+
+```text
+update Ticket
+create TicketHistory
+```
+
+inside the same transaction.
+
+Either both operations succeed or neither succeeds.
+
+---
+
+# 29. ERD
+
+The logical entity relationship model is:
+
+```text
+┌─────────────────────────┐
+│          USERS          │
+├─────────────────────────┤
+│ PK id                   │
+│ UQ email                │
+│ password_hash           │
+│ first_name              │
+│ last_name               │
+│ role                    │
+│ active                  │
+│ created_at              │
+│ updated_at              │
+└────────────┬────────────┘
+             │
+             │ 1
+             │
+             │ creates
+             │
+             │ *
+┌────────────▼────────────┐
+│         TICKETS         │
+├─────────────────────────┤
+│ PK id                   │
+│ FK customer_id          │───────────────┐
+│ FK assigned_agent_id    │───────┐       │
+│ title                   │       │       │
+│ description             │       │       │
+│ status                  │       │       │
+│ priority                │       │       │
+│ created_at              │       │       │
+│ updated_at              │       │       │
+│ resolved_at             │       │       │
+│ closed_at               │       │       │
+│ version                 │       │       │
+└───────┬─────────┬───────┘       │       │
+        │         │               │       │
+        │1        │1              │       │
+        │         │               │       │
+        │*        │*              │       │
+        ▼         ▼               │       │
+┌──────────────┐ ┌──────────────────────┐ │
+│   COMMENTS   │ │    TICKET_HISTORY    │ │
+├──────────────┤ ├──────────────────────┤ │
+│ PK id        │ │ PK id                │ │
+│ FK ticket_id │ │ FK ticket_id         │ │
+│ FK author_id │ │ FK actor_user_id     │ │
+│ content      │ │ event_type           │ │
+│ created_at   │ │ field_name           │ │
+└──────┬───────┘ │ old_value            │ │
+       │         │ new_value            │ │
+       │         │ created_at           │ │
+       │         └──────────┬───────────┘ │
+       │                    │             │
+       └────────────────────┼─────────────┘
+                            │
+                            │ references
+                            ▼
+                         USERS
+```
+
+---
+
+# 30. Relationship Summary
+
+| Parent | Child | Relationship |
+|---|---|---|
+| User | Ticket | One customer → many tickets |
+| User | Ticket | One agent → many assigned tickets |
+| Ticket | Comment | One ticket → many comments |
+| User | Comment | One user → many comments |
+| Ticket | TicketHistory | One ticket → many history entries |
+| User | TicketHistory | One user → many performed changes |
+
+---
+
+# 31. Physical Table Names
+
+Use lowercase snake_case table names:
+
+```text
+users
+tickets
+comments
+ticket_history
+```
+
+Column names should also use snake_case.
+
+Example:
+
+```text
+assigned_agent_id
+created_at
+resolved_at
+```
+
+Java fields remain conventional camelCase:
+
+```text
+assignedAgent
+createdAt
+resolvedAt
+```
+
+---
+
+# 32. Foreign Keys
+
+## tickets.customer_id
+
+```text
+REFERENCES users(id)
+ON DELETE RESTRICT
+```
+
+A user owning tickets cannot be physically deleted.
+
+---
+
+## tickets.assigned_agent_id
+
+```text
+REFERENCES users(id)
+ON DELETE RESTRICT
+```
+
+Nullable.
+
+---
+
+## comments.ticket_id
+
+```text
+REFERENCES tickets(id)
+ON DELETE RESTRICT
+```
+
+---
+
+## comments.author_id
+
+```text
+REFERENCES users(id)
+ON DELETE RESTRICT
+```
+
+---
+
+## ticket_history.ticket_id
+
+```text
+REFERENCES tickets(id)
+ON DELETE RESTRICT
+```
+
+---
+
+## ticket_history.actor_user_id
+
+```text
+REFERENCES users(id)
+ON DELETE RESTRICT
+```
+
+`CASCADE DELETE` should not be used for core business records.
+
+---
+
+# 33. Delete Strategy
+
+## Users
+
+No hard delete.
+
+Use:
+
+```text
+active = false
+```
+
+---
+
+## Tickets
+
+No delete operation in MVP.
+
+---
+
+## Comments
+
+No delete operation in MVP.
+
+---
+
+## TicketHistory
+
+Never deleted through normal application behaviour.
+
+This approach preserves referential integrity and audit history.
+
+---
+
+# 34. Agent Deactivation Rule
+
+An inactive user cannot:
+
+- authenticate;
+- receive new ticket assignments.
+
+If an agent is already assigned to historical RESOLVED or CLOSED tickets, those relationships may remain.
+
+For OPEN or IN_PROGRESS tickets, the preferred administrative workflow is to reassign or unassign those tickets before the account is deactivated.
+
+The application may reject agent deactivation while active tickets remain assigned.
+
+Example:
+
+```text
+409 CONFLICT
+
+"Agent has active assigned tickets and cannot be deactivated."
+```
+
+This prevents active work from becoming silently abandoned.
+
+---
+
+# 35. Recommended Database Indexes
+
+Indexes should support actual application queries rather than being added indiscriminately.
+
+---
+
+## users
+
+### Unique email
+
+```text
+UNIQUE INDEX ux_users_email (email)
+```
+
+Supports:
+
+- registration uniqueness;
+- login lookup.
+
+---
+
+## tickets — customer ticket list
+
+```text
+INDEX idx_tickets_customer_created
+(customer_id, created_at)
+```
+
+Supports:
+
+```text
+customer's tickets
+ordered by creation date
+```
+
+---
+
+## tickets — support queue status
+
+```text
+INDEX idx_tickets_status_priority_created
+(status, priority, created_at)
+```
+
+Supports:
+
+```text
+OPEN tickets
+HIGH priority tickets
+queue filtering
+```
+
+---
+
+## tickets — agent workload
+
+```text
+INDEX idx_tickets_agent_status
+(assigned_agent_id, status)
+```
+
+Supports:
+
+```text
+tickets assigned to me
+active tickets for an agent
+```
+
+---
+
+## tickets — recent activity
+
+```text
+INDEX idx_tickets_updated
+(updated_at)
+```
+
+Supports:
+
+```text
+recently active tickets
+```
+
+---
+
+## comments
+
+```text
+INDEX idx_comments_ticket_created
+(ticket_id, created_at)
+```
+
+Supports chronological ticket discussion retrieval.
+
+---
+
+## ticket_history
+
+```text
+INDEX idx_ticket_history_ticket_created
+(ticket_id, created_at)
+```
+
+Supports chronological activity retrieval.
+
+---
+
+# 36. Search Strategy
+
+MVP ticket search must support:
+
+- ticket reference;
+- title.
+
+Ticket-reference search:
+
+```text
+SUP-1042
+```
+
+is parsed into:
+
+```text
+id = 1042
+```
+
+and queried using the primary key.
+
+Title search can initially use a case-insensitive:
+
+```sql
+LIKE
+```
+
+query.
+
+For a portfolio-scale database containing several thousand tickets, this is acceptable.
+
+Full-text search infrastructure should not be introduced until required.
+
+---
+
+# 37. Constraints Versus Application Validation
+
+Some requirements should be enforced at multiple layers.
+
+Example:
+
+```text
+title must exist
+```
+
+should be protected by:
+
+1. frontend validation;
+2. API DTO validation;
+3. database NOT NULL constraint.
+
+But a rule such as:
+
+```text
+OPEN cannot transition directly to CLOSED
+```
+
+belongs primarily in domain/service logic because it represents business behaviour rather than static relational validity.
+
+---
+
+# 38. Recommended Database Checks
+
+Where supported by the chosen MySQL version, check constraints may protect enum-like values.
+
+Conceptually:
+
+```text
+role IN (
+    'CUSTOMER',
+    'AGENT',
+    'ADMIN'
+)
+```
+
+```text
+status IN (
+    'OPEN',
+    'IN_PROGRESS',
+    'RESOLVED',
+    'CLOSED'
+)
+```
+
+```text
+priority IN (
+    'LOW',
+    'MEDIUM',
+    'HIGH',
+    'URGENT'
+)
+```
+
+However, Flyway migrations and Java enums remain the primary maintainable definitions.
+
+---
+
+# 39. Transaction Boundaries
+
+Business operations involving history should be transactional.
+
+Example: status change.
+
+```text
+BEGIN TRANSACTION
+
+validate transition
+
+update tickets.status
+
+update tickets.resolved_at if required
+
+update tickets.updated_at
+
+insert ticket_history
+
+COMMIT
+```
+
+If the history insert fails:
+
+```text
+ROLLBACK
+```
+
+The ticket must not change without its associated audit event.
+
+The same principle applies to:
+
+- priority changes;
+- assignment changes;
+- reopening;
+- closure.
+
+---
+
+# 40. Aggregate Boundary
+
+From a domain perspective, `Ticket` should be treated as the main aggregate.
+
+Operations such as:
+
+```text
+assignAgent()
+changeStatus()
+changePriority()
+addComment()
+```
+
+operate in relation to a Ticket.
+
+Controllers should therefore not contain raw logic such as:
+
+```text
+ticket.setStatus(request.status());
+repository.save(ticket);
+```
+
+Instead, a service/domain operation should validate the requested change and perform the associated history logic.
+
+Conceptually:
+
+```text
+TicketService.changeStatus(...)
+TicketService.assignAgent(...)
+TicketService.changePriority(...)
+CommentService.addComment(...)
+```
+
+---
+
+# 41. JPA Relationship Guidance
+
+Conceptually:
+
+```text
+Ticket
+    ManyToOne User customer
+
+Ticket
+    ManyToOne User assignedAgent
+
+Comment
+    ManyToOne Ticket ticket
+
+Comment
+    ManyToOne User author
+
+TicketHistory
+    ManyToOne Ticket ticket
+
+TicketHistory
+    ManyToOne User actor
+```
+
+Collections such as:
+
+```text
+ticket.getComments()
+ticket.getHistory()
+```
+
+should not automatically load massive datasets.
+
+Avoid relying on large bidirectional `@OneToMany` collections with eager loading.
+
+Comments and history should normally be retrieved through dedicated repository queries with appropriate ordering and pagination where necessary.
+
+Default toward:
+
+```text
+LAZY
+```
+
+relationships.
+
+---
+
+# 42. DTO Boundary
+
+JPA entities must not be returned directly from REST controllers.
+
+The API should use DTOs such as:
+
+```text
+TicketSummaryResponse
+TicketDetailResponse
+CommentResponse
+TicketHistoryResponse
+UserSummaryResponse
+```
+
+This prevents:
+
+- accidental data exposure;
+- circular serialization;
+- persistence-model coupling;
+- uncontrolled lazy loading;
+- leaking password fields or internal state.
+
+---
+
+# 43. Important Domain Invariants
+
+The application must always preserve these conditions:
+
+```text
+Ticket.customer != null
+```
+
+```text
+Ticket.status != null
+```
+
+```text
+Ticket.priority != null
+```
+
+```text
+Ticket.assignedAgent == null
+OR
+Ticket.assignedAgent.role permits assignment
+```
+
+```text
+Ticket.status == CLOSED
+→ closedAt != null
+```
+
+```text
+Ticket.status == RESOLVED
+→ resolvedAt != null
+```
+
+```text
+Ticket.status != RESOLVED
+→ resolvedAt may be null
+```
+
+```text
+Comment.ticket != null
+```
+
+```text
+Comment.author != null
+```
+
+```text
+TicketHistory.ticket != null
+```
+
+```text
+TicketHistory.actor != null
+```
+
+---
+
+# 44. Example Data
+
+## Users
+
+```text
+1 | alex@example.com   | CUSTOMER
+2 | maria@example.com  | AGENT
+3 | admin@example.com  | ADMIN
+```
+
+---
+
+## Ticket
+
+```text
+id:                1042
+customer_id:       1
+assigned_agent_id: 2
+
+title:
+Unable to reset my password
+
+status:
+IN_PROGRESS
+
+priority:
+HIGH
+
+public reference:
+SUP-1042
+```
+
+---
+
+## Comments
+
+```text
+#301
+ticket: SUP-1042
+author: Alex
+content: The password reset email never arrives.
+
+#302
+ticket: SUP-1042
+author: Maria
+content: I've checked the account and am investigating.
+```
+
+---
+
+## History
+
+```text
+10:35
+TICKET_CREATED
+Actor: Alex
+
+10:42
+ASSIGNMENT_CHANGED
+NULL → Maria
+
+10:43
+STATUS_CHANGED
+OPEN → IN_PROGRESS
+
+10:50
+PRIORITY_CHANGED
+MEDIUM → HIGH
+```
+
+---
+
+# 45. Approximate Initial Flyway Structure
+
+The schema should eventually be introduced through migrations such as:
+
+```text
+V1__create_users.sql
+
+V2__create_tickets.sql
+
+V3__create_comments.sql
+
+V4__create_ticket_history.sql
+
+V5__create_indexes.sql
+```
+
+Seed/demo data should be separated from production schema migrations where possible.
+
+For example:
+
+```text
+development seed script
+```
+
+rather than mixing fake users into core production migrations.
+
+---
+
+# 46. Decisions Explicitly Deferred
+
+The following should not be added to the current schema:
+
+```text
+ticket_categories
+attachments
+tags
+organizations
+teams
+departments
+notifications
+sla_policies
+knowledge_articles
+saved_filters
+ticket_watchers
+```
+
+Adding unused tables because they might be useful later would make the architecture unnecessarily speculative.
+
+They can be introduced through future Flyway migrations when genuine requirements exist.
+
+---
+
+# 47. Final MVP Relational Model
+
+The MVP database therefore remains intentionally compact:
+
+```text
+users
+  │
+  ├──────────────┐
+  │              │
+  ▼              ▼
+tickets       comments
+  │              ▲
+  │              │
+  └──────┐       │
+         ▼       │
+   ticket_history
+```
+
+More precisely:
+
+```text
+users
+ ├──< tickets.customer_id
+ ├──< tickets.assigned_agent_id
+ ├──< comments.author_id
+ └──< ticket_history.actor_user_id
+
+tickets
+ ├──< comments.ticket_id
+ └──< ticket_history.ticket_id
+```
+
+Only four primary tables are necessary to implement the complete MVP ticket workflow.
+
+---
+
+# 48. Model Acceptance Criteria
+
+The domain model is considered ready for implementation when the team agrees that:
+
+- every PRD requirement can be represented by the model;
+- no MVP entity lacks a clear purpose;
+- user ownership is explicit;
+- agent assignment is optional;
+- status and priority have controlled values;
+- ticket lifecycle timestamps have defined behaviour;
+- comments are immutable;
+- audit history is immutable;
+- deletion rules preserve historical records;
+- foreign-key behaviour is defined;
+- critical query indexes are identified;
+- concurrent ticket updates are protected;
+- ticket references have a clear strategy;
+- JPA entities will not be exposed directly through the REST API.
+
+At that point the schema can safely be translated into Flyway migrations and JPA entities.

@@ -1,0 +1,1489 @@
+ResolveDesk — Product Requirements Document
+
+Document version: 0.1
+Project type: Full-stack portfolio application
+Working product name: ResolveDesk
+Primary stack: Spring Boot, MySQL, React, TypeScript, Tailwind CSS
+Target release: MVP / Portfolio Release v1.0
+
+1. Product Overview
+
+ResolveDesk is a role-based customer support ticket management application.
+
+Customers can submit support requests and track their progress. Support agents can review incoming tickets, assign work, communicate with customers, and move tickets through a defined resolution workflow. Administrators can manage users and oversee the system.
+
+The application is intended to model the core workflow of commercial support platforms such as Jira Service Management, Zendesk, Freshdesk, or similar internal business applications, without attempting to reproduce their full feature sets.
+
+The project is primarily designed as a professional software engineering portfolio project demonstrating full-stack development, business-rule modelling, authentication and authorization, relational database design, API design, validation, testing, documentation, and deployment.
+
+2. Problem Statement
+
+Support requests are difficult to manage when they are handled informally through email, messaging applications, or spreadsheets.
+
+Common problems include:
+
+requests being lost or forgotten;
+
+customers not knowing the current status of an issue;
+
+support agents duplicating work;
+
+unclear ownership of support requests;
+
+inconsistent prioritization;
+
+no reliable history of ticket changes;
+
+difficulty identifying unresolved issues.
+
+ResolveDesk provides a centralized system where support requests have clearly defined ownership, priority, status, communication history, and lifecycle information.
+
+3. Product Goals
+
+The MVP must provide a complete ticket-management workflow from ticket creation through resolution.
+
+The primary goals are to:
+
+Allow customers to create and monitor support tickets.
+
+Allow support agents to manage a shared ticket queue.
+
+Allow agents to assign tickets to themselves or other agents.
+
+Support controlled ticket status transitions.
+
+Allow communication through ticket comments.
+
+Maintain an audit history of significant ticket changes.
+
+Enforce role-based permissions.
+
+Provide useful ticket search, sorting, and filtering.
+
+Provide a professional and responsive user interface.
+
+Demonstrate production-style backend architecture and development practices.
+
+4. Non-Goals
+
+ResolveDesk v1.0 is not intended to reproduce every feature of a commercial support platform.
+
+The following are explicitly outside the MVP scope:
+
+real-time chat;
+
+WebSocket-based updates;
+
+email-to-ticket integration;
+
+outbound email notifications;
+
+SMS notifications;
+
+AI ticket classification;
+
+AI-generated responses;
+
+file attachments;
+
+knowledge-base articles;
+
+SLA management;
+
+customer organizations;
+
+agent teams or departments;
+
+multi-tenant architecture;
+
+OAuth or social login;
+
+billing or subscriptions;
+
+customizable ticket fields;
+
+advanced reporting;
+
+native mobile applications;
+
+integrations with third-party services;
+
+microservices;
+
+event queues such as Kafka or RabbitMQ.
+
+These features may be considered for future versions but must not delay completion of the core application.
+
+5. User Roles
+
+ResolveDesk will contain three application roles.
+
+5.1 Customer
+
+A Customer is an end user requesting support.
+
+Customers can:
+
+register for an account;
+
+log in and log out;
+
+create support tickets;
+
+view tickets they created;
+
+view the status and priority of their tickets;
+
+add comments to eligible tickets;
+
+view ticket comments;
+
+view ticket activity/history relevant to them;
+
+reopen eligible resolved tickets.
+
+Customers cannot:
+
+view another customer's tickets;
+
+assign tickets;
+
+change ticket priority;
+
+directly control most ticket statuses;
+
+access administrative functionality;
+
+manage other users.
+
+5.2 Agent
+
+An Agent is a member of the support team.
+
+Agents can:
+
+log in and log out;
+
+view the complete support ticket queue;
+
+search and filter tickets;
+
+view individual ticket details;
+
+assign tickets to themselves;
+
+assign tickets to another agent;
+
+change ticket priority;
+
+change ticket status according to permitted transitions;
+
+add comments;
+
+view ticket history.
+
+Agents cannot:
+
+change user roles;
+
+deactivate or administratively manage accounts;
+
+bypass ticket lifecycle rules.
+
+5.3 Administrator
+
+An Administrator manages system users and has full operational visibility.
+
+Administrators can perform all Agent actions.
+
+Administrators can additionally:
+
+view all users;
+
+change eligible user roles;
+
+activate or deactivate accounts;
+
+view all tickets;
+
+access administrative user-management interfaces.
+
+Administrators must still respect ticket business rules rather than directly manipulating database state.
+
+6. Core Domain Concepts
+
+The MVP will contain the following primary domain entities:
+
+User
+
+Ticket
+
+Comment
+
+TicketHistory
+
+The following may exist as enumerated domain values rather than separate entities:
+
+UserRole
+
+TicketStatus
+
+TicketPriority
+
+7. Ticket Lifecycle
+
+Every ticket has one current status.
+
+The initial statuses supported by the MVP are:
+
+OPEN
+
+IN_PROGRESS
+
+RESOLVED
+
+CLOSED
+
+7.1 Status meanings
+
+OPEN
+
+The ticket has been submitted and requires attention.
+
+A newly created ticket always begins in this state.
+
+IN_PROGRESS
+
+An agent is actively working on the issue.
+
+RESOLVED
+
+The agent believes that the reported issue has been solved.
+
+The ticket remains available for reopening before final closure.
+
+CLOSED
+
+The ticket is considered complete and no longer active.
+
+Closed tickets are read-only for normal users.
+
+8. Ticket State Transitions
+
+Status changes must follow explicit business rules.
+
+Permitted transitions:
+
+Current Status
+
+New Status
+
+Typical Actor
+
+OPEN
+
+IN_PROGRESS
+
+Agent/Admin
+
+IN_PROGRESS
+
+OPEN
+
+Agent/Admin
+
+IN_PROGRESS
+
+RESOLVED
+
+Agent/Admin
+
+RESOLVED
+
+IN_PROGRESS
+
+Customer/Agent/Admin
+
+RESOLVED
+
+CLOSED
+
+Agent/Admin
+
+CLOSED
+
+—
+
+None in MVP
+
+A ticket may not skip directly through arbitrary lifecycle stages.
+
+Examples of invalid transitions include:
+
+OPEN → CLOSED
+
+OPEN → RESOLVED
+
+CLOSED → IN_PROGRESS
+
+CLOSED → OPEN
+
+Invalid transitions must be rejected by the backend even if a client sends a manually constructed API request.
+
+9. Ticket Priority
+
+Every ticket has one priority.
+
+Supported priorities:
+
+LOW
+
+MEDIUM
+
+HIGH
+
+URGENT
+
+New tickets default to MEDIUM priority unless the business rules are changed later.
+
+Customers do not select priority during ticket creation in the MVP.
+
+Priority is managed by Agents or Administrators.
+
+This prevents customers from marking every request as urgent and creates a meaningful support-team workflow.
+
+10. Ticket Identification
+
+Each ticket must have:
+
+an internal database identifier; and
+
+a human-readable ticket number.
+
+Example:
+
+SUP-1042
+
+The human-readable number should be displayed throughout the user interface.
+
+It should remain stable for the lifetime of the ticket.
+
+11. Functional Requirements
+
+FR-01 — User Registration
+
+The system must allow a new Customer to register.
+
+Required registration information:
+
+first name;
+
+last name;
+
+email address;
+
+password.
+
+Requirements:
+
+email addresses must be unique;
+
+email addresses must use a valid format;
+
+passwords must satisfy configured minimum requirements;
+
+new self-registered users receive the CUSTOMER role;
+
+users cannot self-register as Agent or Administrator.
+
+FR-02 — Authentication
+
+Registered users must be able to authenticate using their email address and password.
+
+The application must:
+
+reject invalid credentials;
+
+identify the authenticated user on protected requests;
+
+enforce authorization on backend endpoints;
+
+support user logout.
+
+FR-03 — Create Ticket
+
+A Customer must be able to create a support ticket.
+
+Required fields:
+
+title;
+
+description.
+
+System-generated fields include:
+
+ticket number;
+
+customer;
+
+status;
+
+priority;
+
+created timestamp;
+
+updated timestamp.
+
+A newly created ticket must:
+
+belong to the authenticated customer;
+
+have status OPEN;
+
+have priority MEDIUM;
+
+initially have no assigned agent.
+
+FR-04 — Customer Ticket List
+
+Customers must be able to view a list of their own tickets.
+
+Each ticket summary should display at minimum:
+
+ticket number;
+
+title;
+
+status;
+
+priority;
+
+assigned agent, if applicable;
+
+created date;
+
+last updated date.
+
+Customers must not receive tickets belonging to other users.
+
+FR-05 — Agent Ticket Queue
+
+Agents and Administrators must be able to view all tickets.
+
+The queue must support:
+
+pagination;
+
+sorting;
+
+filtering;
+
+text search.
+
+Supported filters should include at minimum:
+
+status;
+
+priority;
+
+assigned agent;
+
+unassigned tickets.
+
+Search should support at minimum:
+
+ticket number;
+
+ticket title.
+
+FR-06 — Ticket Detail
+
+Authorized users must be able to open an individual ticket.
+
+The ticket-detail view must display:
+
+ticket number;
+
+title;
+
+description;
+
+status;
+
+priority;
+
+customer;
+
+assigned agent;
+
+created timestamp;
+
+updated timestamp;
+
+comments;
+
+ticket history.
+
+Authorization rules must ensure customers can access only tickets they own.
+
+FR-07 — Ticket Assignment
+
+Agents and Administrators must be able to assign a ticket to an Agent.
+
+Supported operations:
+
+assign ticket to self;
+
+assign ticket to another eligible agent;
+
+reassign a ticket;
+
+remove an existing assignment where permitted.
+
+Customers must not be able to assign tickets.
+
+Every assignment change must generate a ticket-history entry.
+
+FR-08 — Change Ticket Status
+
+Agents and Administrators must be able to change ticket status according to the lifecycle rules.
+
+Customers may only initiate explicitly permitted customer transitions.
+
+For MVP, the primary customer-controlled transition is:
+
+RESOLVED → IN_PROGRESS
+
+This represents reopening a ticket when the customer believes the issue remains unresolved.
+
+Every status change must generate a ticket-history entry.
+
+Invalid transitions must return an appropriate API error.
+
+FR-09 — Change Ticket Priority
+
+Agents and Administrators must be able to change a ticket's priority.
+
+Customers must not be able to modify ticket priority.
+
+Every priority change must generate a ticket-history entry.
+
+FR-10 — Add Comment
+
+Authorized users must be able to add comments to an active ticket.
+
+Each comment must contain:
+
+author;
+
+content;
+
+created timestamp.
+
+Customers may comment only on tickets they own.
+
+Agents and Administrators may comment on tickets they are authorized to view.
+
+Comments may not be added to CLOSED tickets.
+
+FR-11 — Ticket History
+
+The application must maintain an audit trail for significant ticket events.
+
+Events recorded in the MVP must include:
+
+ticket creation;
+
+status changes;
+
+priority changes;
+
+agent assignment;
+
+reassignment;
+
+assignment removal.
+
+Each history entry should include:
+
+ticket;
+
+event type or changed field;
+
+previous value where relevant;
+
+new value where relevant;
+
+user responsible for the change;
+
+timestamp.
+
+History records must not be editable through the normal application interface.
+
+FR-12 — User Management
+
+Administrators must be able to view users.
+
+User-management information should include:
+
+name;
+
+email;
+
+role;
+
+account status;
+
+account creation date.
+
+Administrators must be able to change eligible roles.
+
+Role-change rules must prevent accidental loss of essential administrative access where appropriate.
+
+12. Validation Requirements
+
+Ticket Title
+
+required;
+
+minimum 3 characters;
+
+maximum 120 characters.
+
+Ticket Description
+
+required;
+
+minimum 10 characters;
+
+maximum 5,000 characters.
+
+Comment
+
+required;
+
+minimum 1 meaningful character;
+
+maximum 3,000 characters.
+
+Email
+
+required;
+
+valid email structure;
+
+unique within the application.
+
+Password
+
+Exact password policy may be determined during security design.
+
+At minimum, passwords must have a defined minimum length and must never be stored as plain text.
+
+13. Authorization Matrix
+
+Action
+
+Customer
+
+Agent
+
+Admin
+
+Create account
+
+Yes
+
+No
+
+No
+
+Create ticket
+
+Yes
+
+Optional
+
+Optional
+
+View own tickets
+
+Yes
+
+Yes
+
+Yes
+
+View all tickets
+
+No
+
+Yes
+
+Yes
+
+Comment on owned ticket
+
+Yes
+
+Yes
+
+Yes
+
+Comment on any ticket
+
+No
+
+Yes
+
+Yes
+
+Assign ticket
+
+No
+
+Yes
+
+Yes
+
+Change priority
+
+No
+
+Yes
+
+Yes
+
+Start ticket work
+
+No
+
+Yes
+
+Yes
+
+Resolve ticket
+
+No
+
+Yes
+
+Yes
+
+Reopen resolved ticket
+
+Yes
+
+Yes
+
+Yes
+
+Close ticket
+
+No
+
+Yes
+
+Yes
+
+Manage users
+
+No
+
+No
+
+Yes
+
+Change user role
+
+No
+
+No
+
+Yes
+
+Backend authorization is authoritative.
+
+Frontend visibility rules exist only to improve user experience and must not be relied upon for security.
+
+14. Business Rules
+
+The following rules must be enforced by the backend.
+
+BR-01
+
+Every ticket must belong to exactly one Customer.
+
+BR-02
+
+A ticket may have zero or one assigned Agent.
+
+BR-03
+
+Only users with the AGENT or ADMIN role may be assigned as ticket agents.
+
+BR-04
+
+A Customer may access only tickets they created.
+
+BR-05
+
+New tickets start with status OPEN.
+
+BR-06
+
+New tickets start with priority MEDIUM.
+
+BR-07
+
+Ticket status may change only through an approved state transition.
+
+BR-08
+
+Only Agents or Administrators may modify priority.
+
+BR-09
+
+Only Agents or Administrators may assign or reassign tickets.
+
+BR-10
+
+CLOSED tickets cannot receive new comments.
+
+BR-11
+
+Significant ticket changes must create immutable history records.
+
+BR-12
+
+Deleting tickets is not supported in the MVP.
+
+Tickets represent business records and should remain available for historical purposes.
+
+BR-13
+
+Deleting comments is not supported in the MVP.
+
+BR-14
+
+Customers may not alter ticket ownership.
+
+BR-15
+
+A resolved ticket may be reopened.
+
+BR-16
+
+A closed ticket cannot be reopened in MVP v1.0.
+
+15. Customer User Stories
+
+US-C01
+
+As a Customer, I want to register an account so that I can request support.
+
+US-C02
+
+As a Customer, I want to log in securely so that I can access my support requests.
+
+US-C03
+
+As a Customer, I want to create a ticket describing my problem so that the support team can help me.
+
+US-C04
+
+As a Customer, I want to see all of my tickets so that I can understand the state of my requests.
+
+US-C05
+
+As a Customer, I want to open a ticket and read the conversation so that I know what support has done.
+
+US-C06
+
+As a Customer, I want to comment on an active ticket so that I can provide additional information.
+
+US-C07
+
+As a Customer, I want to see the current ticket status so that I understand its progress.
+
+US-C08
+
+As a Customer, I want to reopen a resolved ticket if my problem has not actually been solved.
+
+16. Agent User Stories
+
+US-A01
+
+As an Agent, I want to view all open support tickets so that I can identify work requiring attention.
+
+US-A02
+
+As an Agent, I want to filter tickets by status and priority so that I can focus on relevant work.
+
+US-A03
+
+As an Agent, I want to search for tickets so that I can quickly locate a specific request.
+
+US-A04
+
+As an Agent, I want to assign a ticket to myself so that other agents know I am handling it.
+
+US-A05
+
+As an Agent, I want to change the status of a ticket so that its progress is accurately represented.
+
+US-A06
+
+As an Agent, I want to change ticket priority so that important issues can be handled appropriately.
+
+US-A07
+
+As an Agent, I want to communicate with the customer through comments so that the entire conversation remains attached to the ticket.
+
+US-A08
+
+As an Agent, I want to see the ticket's history so that I understand previous actions.
+
+US-A09
+
+As an Agent, I want invalid workflow actions to be prevented so that tickets remain in valid states.
+
+17. Administrator User Stories
+
+US-AD01
+
+As an Administrator, I want to view all application users so that I can administer access.
+
+US-AD02
+
+As an Administrator, I want to change user roles so that support staff can receive the correct permissions.
+
+US-AD03
+
+As an Administrator, I want to deactivate an account so that users who should no longer have access cannot authenticate.
+
+US-AD04
+
+As an Administrator, I want access to all tickets so that I can investigate operational issues.
+
+18. Key User Workflows
+
+Workflow A — Customer Creates Ticket
+
+Customer logs in.
+
+Customer selects "Create Ticket."
+
+Customer enters title and description.
+
+Frontend validates required input.
+
+Backend validates request.
+
+Ticket is created.
+
+Ticket receives a ticket number.
+
+Status becomes OPEN.
+
+Priority becomes MEDIUM.
+
+Ticket creation is recorded in history.
+
+Customer is shown the ticket-detail page.
+
+Workflow B — Agent Begins Work
+
+Agent logs in.
+
+Agent opens ticket queue.
+
+Agent filters or selects an OPEN ticket.
+
+Agent reviews ticket details.
+
+Agent assigns ticket to themselves.
+
+Assignment history is recorded.
+
+Agent changes ticket to IN_PROGRESS.
+
+Status history is recorded.
+
+Customer can see the updated status.
+
+Workflow C — Agent Resolves Ticket
+
+Agent investigates ticket.
+
+Agent communicates with customer through comments if necessary.
+
+Agent determines the problem is resolved.
+
+Agent changes status from IN_PROGRESS to RESOLVED.
+
+Resolution timestamp is recorded.
+
+History entry is created.
+
+Workflow D — Customer Reopens Ticket
+
+Customer views a RESOLVED ticket.
+
+Customer determines the problem remains.
+
+Customer selects "Reopen Ticket."
+
+Ticket changes from RESOLVED to IN_PROGRESS.
+
+History entry is created.
+
+Customer may add an explanatory comment.
+
+Workflow E — Ticket Closure
+
+Ticket is currently RESOLVED.
+
+Agent determines the ticket can be finalized.
+
+Agent changes status to CLOSED.
+
+Closed timestamp is recorded.
+
+History entry is created.
+
+Ticket becomes read-only for normal interaction.
+
+19. Error Handling Requirements
+
+The API must return consistent structured errors.
+
+Errors should distinguish between:
+
+input validation failure;
+
+authentication failure;
+
+authorization failure;
+
+resource not found;
+
+invalid ticket status transition;
+
+conflicting data;
+
+unexpected server error.
+
+The frontend should display user-readable messages rather than raw backend exceptions.
+
+Internal stack traces must never be sent to the client.
+
+20. Search, Filtering, Sorting and Pagination
+
+The Agent ticket queue must support server-side pagination.
+
+The backend should be designed to support combinations such as:
+
+status;
+
+priority;
+
+assigned agent;
+
+unassigned state;
+
+search text;
+
+page;
+
+page size;
+
+sort property;
+
+sort direction.
+
+The system should not require loading the entire ticket database into the frontend before filtering.
+
+21. User Interface Requirements
+
+The UI should prioritize clarity over visual complexity.
+
+The application should be responsive for normal desktop and tablet usage.
+
+Primary screens:
+
+Login
+
+Registration
+
+Customer Dashboard
+
+Create Ticket
+
+Ticket Detail
+
+Agent Ticket Queue
+
+Agent Dashboard
+
+User Administration
+
+A Kanban view may be implemented after the core table-based queue works correctly.
+
+22. Accessibility Requirements
+
+The MVP should follow basic accessibility practices.
+
+Requirements include:
+
+semantic form labels;
+
+keyboard-accessible controls;
+
+visible focus states;
+
+sufficient text/background contrast;
+
+status information not communicated by color alone;
+
+useful validation messages;
+
+appropriate button and link semantics.
+
+Perfect WCAG compliance is not required for the portfolio MVP, but accessibility must be considered deliberately.
+
+23. Security Requirements
+
+The system must:
+
+securely hash passwords;
+
+never store plain-text passwords;
+
+authenticate access to protected resources;
+
+enforce authorization server-side;
+
+validate incoming requests;
+
+prevent users from accessing resources belonging to other users;
+
+avoid exposing unnecessary sensitive user information;
+
+use environment variables or configuration mechanisms for secrets;
+
+avoid committing production secrets to Git.
+
+The exact authentication mechanism will be defined during architecture planning.
+
+24. Data Integrity Requirements
+
+Database constraints should support application rules where practical.
+
+Examples include:
+
+unique user email;
+
+non-null ticket owner;
+
+non-null ticket status;
+
+non-null priority;
+
+valid foreign-key relationships;
+
+required comment author;
+
+required comment ticket.
+
+Application validation does not replace appropriate database constraints.
+
+25. Auditability
+
+The ticket lifecycle must be explainable after the fact.
+
+A reviewer should be able to answer questions such as:
+
+Who changed this ticket's status?
+
+When was it assigned?
+
+Who was it assigned to?
+
+What was its previous priority?
+
+When was it resolved?
+
+Was it reopened?
+
+TicketHistory exists specifically to support this requirement.
+
+26. Non-Functional Requirements
+
+Maintainability
+
+The codebase should have a clear architecture and separation of concerns.
+
+Business rules should not be implemented exclusively in controllers or frontend components.
+
+Testability
+
+Core business logic must be structured so it can be independently tested.
+
+Performance
+
+The system should perform comfortably with several thousand seeded tickets in a development/demo environment.
+
+No enterprise-scale optimization is required.
+
+Reliability
+
+Invalid operations should fail safely without corrupting domain state.
+
+Documentation
+
+A developer should be able to understand the system architecture and run the application locally from repository documentation.
+
+27. Testing Requirements
+
+The MVP must include automated tests covering important business behaviour.
+
+Priority test categories:
+
+Domain/service tests
+
+valid status transitions;
+
+invalid status transitions;
+
+assignment rules;
+
+priority changes.
+
+Security tests
+
+customer cannot view another customer's ticket;
+
+customer cannot assign tickets;
+
+customer cannot change priority;
+
+unauthenticated users cannot access protected endpoints;
+
+administrator-only endpoints reject non-admin users.
+
+API/integration tests
+
+ticket creation;
+
+ticket retrieval;
+
+comment creation;
+
+status updates;
+
+validation errors;
+
+resource-not-found behaviour.
+
+Frontend tests
+
+At minimum:
+
+critical form validation;
+
+important ticket workflow components;
+
+permission-dependent rendering where valuable.
+
+28. MVP Acceptance Criteria
+
+ResolveDesk v1.0 is considered functionally complete when:
+
+users can register and authenticate;
+
+three roles are supported;
+
+customers can create tickets;
+
+customers can view only their own tickets;
+
+agents can view the full ticket queue;
+
+agents can assign tickets;
+
+agents can change priority;
+
+ticket statuses follow defined transition rules;
+
+customers and agents can comment on eligible tickets;
+
+significant ticket changes generate history records;
+
+ticket search/filter/sort/pagination works;
+
+closed tickets behave as read-only records;
+
+administrators can manage user roles;
+
+backend authorization is tested;
+
+critical business rules have automated tests;
+
+the application can be run locally from documented instructions;
+
+database migrations create the required schema;
+
+no secrets are committed to the repository;
+
+the UI provides a coherent end-to-end workflow.
+
+29. Portfolio Quality Criteria
+
+Because ResolveDesk is also a portfolio project, v1.0 should satisfy additional engineering-quality requirements.
+
+The repository should include:
+
+professional README;
+
+project screenshots;
+
+architecture overview;
+
+ER diagram;
+
+API documentation;
+
+automated tests;
+
+database migrations;
+
+sample environment configuration;
+
+Docker configuration;
+
+clear Git history;
+
+CI pipeline;
+
+deployment or live demo where practical;
+
+documented technical decisions.
+
+The application should be understandable to a developer reviewing the repository without requiring a private explanation from the author.
+
+30. Success Criteria
+
+The project's success should not be measured primarily through user counts or commercial metrics.
+
+For portfolio purposes, success means demonstrating that the developer can:
+
+translate requirements into a working system;
+
+model a business domain;
+
+create relational data models;
+
+enforce business rules;
+
+design REST APIs;
+
+implement authentication and authorization;
+
+build a usable React interface;
+
+write meaningful automated tests;
+
+document technical decisions;
+
+deploy and maintain a full-stack application.
+
+31. Future Enhancements
+
+Features intentionally deferred beyond v1.0 may include:
+
+ticket categories;
+
+attachments;
+
+email notifications;
+
+customer satisfaction ratings;
+
+SLA tracking;
+
+agent teams;
+
+dashboard analytics;
+
+saved filters;
+
+ticket tags;
+
+ticket watchers;
+
+internal/private agent notes;
+
+knowledge base;
+
+WebSocket updates;
+
+OAuth;
+
+organization accounts;
+
+AI-assisted categorization or summaries.
+
+Future features should be introduced only after the MVP is complete and stable.
+
+32. Assumptions
+
+The MVP assumes:
+
+each customer account represents one individual;
+
+every ticket belongs to one customer;
+
+tickets require at most one assigned agent;
+
+all agents belong to the same support organization;
+
+all agents may access the common ticket queue;
+
+administrators are trusted system operators;
+
+email delivery is not required;
+
+a single MySQL database is sufficient;
+
+application traffic will remain within normal portfolio/demo scale.
+
+33. Product Principle
+
+When deciding whether a feature belongs in the MVP, use the following rule:
+
+A feature should be included when it materially demonstrates the support-ticket workflow, an important business rule, or a meaningful software-engineering skill.
+
+Features added mainly because they appear impressive should be deferred until the core system is complete.
+
+34. MVP Summary
+
+ResolveDesk v1.0 consists of four core concepts:
+
+Identity
+
+Users authenticate and receive role-based permissions.
+
+Tickets
+
+Customers create support requests that contain status, priority, ownership, and assignment information.
+
+Conversation
+
+Customers and support agents communicate through ticket comments.
+
+Workflow
+
+Tickets progress through controlled lifecycle states while significant changes are recorded in an audit history.
+
+Everything else is secondary to making these four areas reliable, secure, understandable, and well tested.

@@ -1,0 +1,60 @@
+Implementation Guardrails
+
+Backend
+- Java + Spring Boot
+- Maven
+- Spring Web
+- Spring Data JPA
+- Spring Security
+- Jakarta Bean Validation
+- MySQL
+- Flyway
+- springdoc/OpenAPI
+- JUnit + Mockito
+- Testcontainers for integration tests if appropriate
+
+Backend architecture
+- Feature-oriented package structure
+- Controllers remain thin
+- Business rules live in services/domain logic
+- Repositories handle persistence only
+- REST API uses DTOs, never JPA entities
+- Dedicated mapper classes/functions
+- @ControllerAdvice for API error handling
+- @Transactional around business operations
+- @Version optimistic locking on Ticket
+- Default JPA relationships to LAZY where appropriate
+
+Authentication
+- Session-based Spring Security authentication
+- Passwords hashed securely
+- CSRF protection remains enabled
+- Backend authorization is authoritative
+- No JWT for MVP
+
+Frontend
+- React
+- TypeScript
+- Tailwind CSS
+- React Router
+- Dedicated API layer
+- Components must not call fetch directly throughout the UI
+- Authentication state centralized
+- Server state handled consistently
+- Reusable UI components where appropriate
+- No unnecessary global state library initially
+
+Database
+- MySQL 8+
+- Schema controlled exclusively through Flyway
+- Hibernate schema auto-generation disabled outside tests
+- No hard deletes for Users/Tickets/Comments/History
+
+Engineering
+- Docker Compose for local database/application environment
+- .env.example committed
+- Secrets never committed
+- Meaningful automated tests required
+- OpenAPI documentation enabled
+- Keep implementation aligned with PRD, ERD and API contract
+- Do not introduce features outside MVP without approval

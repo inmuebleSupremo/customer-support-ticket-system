@@ -1,0 +1,1923 @@
+# ResolveDesk — REST API Contract
+
+**Document version:** 0.1  
+**Related documents:** PRD v0.1, Domain Model & ERD Specification v0.1  
+**API style:** REST/JSON  
+**Base path:** `/api/v1`  
+**Backend:** Spring Boot  
+**Authentication:** Spring Security authenticated session for MVP  
+**Content type:** `application/json`
+
+---
+
+# 1. Purpose
+
+This document defines the HTTP contract between the ResolveDesk frontend and backend.
+
+It specifies:
+
+- API routes;
+- allowed roles;
+- request DTOs;
+- response DTOs;
+- query parameters;
+- validation behaviour;
+- HTTP status codes;
+- error responses;
+- pagination;
+- authorization behaviour;
+- optimistic-concurrency handling.
+
+Controllers and frontend API clients should be implemented from this contract rather than inventing endpoint behaviour during development.
+
+---
+
+# 2. API Design Principles
+
+## 2.1 Versioned API
+
+All business endpoints use:
+
+```text
+/api/v1
+```
+
+Example:
+
+```text
+GET /api/v1/tickets
+```
+
+This provides a clean future migration path without introducing unnecessary complexity now.
+
+---
+
+## 2.2 JSON Naming
+
+JSON fields use camelCase.
+
+Example:
+
+```json
+{
+  "assignedAgent": null,
+  "createdAt": "2026-09-29T10:35:00Z"
+}
+```
+
+Database columns remain snake_case.
+
+---
+
+## 2.3 Dates and Times
+
+All timestamps are returned as ISO-8601 UTC values.
+
+Example:
+
+```text
+2026-09-29T10:35:00Z
+```
+
+Clients may convert them to the user's local timezone for display.
+
+---
+
+## 2.4 Entities Are Never Returned Directly
+
+REST controllers must return DTOs.
+
+JPA entities are internal persistence objects and must never form the public API contract.
+
+---
+
+# 3. Authentication Model
+
+For MVP v1, ResolveDesk will use Spring Security with server-managed authenticated sessions.
+
+After successful authentication, the backend creates an authenticated session.
+
+The browser receives a secure session cookie.
+
+Frontend JavaScript should not manually store passwords or authentication secrets.
+
+The authenticated user's identity is always derived from the Spring Security context.
+
+The client must never be able to impersonate another user by supplying:
+
+```text
+customerId
+authorId
+actorUserId
+```
+
+for operations where those values should come from authentication context.
+
+---
+
+# 4. Authentication Endpoints
+
+## POST `/api/v1/auth/register`
+
+Creates a new Customer account.
+
+### Access
+
+Public.
+
+### Request
+
+```json
+{
+  "firstName": "Alex",
+  "lastName": "Morgan",
+  "email": "alex@example.com",
+  "password": "ExamplePassword123!"
+}
+```
+
+### Validation
+
+`firstName`
+
+- required;
+- max 100 characters.
+
+`lastName`
+
+- required;
+- max 100 characters.
+
+`email`
+
+- required;
+- valid email;
+- max 254 characters;
+- unique.
+
+`password`
+
+- required;
+- must satisfy the configured password policy.
+
+### Important rule
+
+The client cannot submit:
+
+```json
+{
+  "role": "ADMIN"
+}
+```
+
+Self-registration always creates:
+
+```text
+CUSTOMER
+```
+
+### Success
+
+```text
+201 Created
+```
+
+### Response
+
+```json
+{
+  "id": 17,
+  "firstName": "Alex",
+  "lastName": "Morgan",
+  "email": "alex@example.com",
+  "role": "CUSTOMER",
+  "active": true,
+  "createdAt": "2026-09-29T10:00:00Z"
+}
+```
+
+Registration does not automatically grant another role.
+
+---
+
+# 5. POST `/api/v1/auth/login`
+
+Authenticates an existing user.
+
+### Access
+
+Public.
+
+### Request
+
+```json
+{
+  "email": "alex@example.com",
+  "password": "ExamplePassword123!"
+}
+```
+
+### Success
+
+```text
+200 OK
+```
+
+The backend establishes the authenticated session.
+
+### Response
+
+```json
+{
+  "user": {
+    "id": 17,
+    "firstName": "Alex",
+    "lastName": "Morgan",
+    "email": "alex@example.com",
+    "role": "CUSTOMER",
+    "active": true
+  }
+}
+```
+
+### Failure
+
+Invalid credentials:
+
+```text
+401 Unauthorized
+```
+
+Inactive account:
+
+```text
+403 Forbidden
+```
+
+The authentication response should not reveal whether a specific email address exists.
+
+---
+
+# 6. POST `/api/v1/auth/logout`
+
+Ends the current authenticated session.
+
+### Access
+
+Authenticated users.
+
+### Success
+
+```text
+204 No Content
+```
+
+---
+
+# 7. GET `/api/v1/auth/csrf`
+
+Provides/initializes the CSRF token required for state-changing requests when using session authentication.
+
+### Access
+
+Public or authenticated depending on Spring Security configuration.
+
+Example response:
+
+```json
+{
+  "headerName": "X-XSRF-TOKEN",
+  "parameterName": "_csrf",
+  "token": "..."
+}
+```
+
+The frontend API layer should handle this rather than individual React components.
+
+---
+
+# 8. Current User
+
+## GET `/api/v1/users/me`
+
+Returns the currently authenticated user's profile.
+
+### Access
+
+Authenticated users.
+
+### Response
+
+```json
+{
+  "id": 17,
+  "firstName": "Alex",
+  "lastName": "Morgan",
+  "email": "alex@example.com",
+  "role": "CUSTOMER",
+  "active": true,
+  "createdAt": "2026-09-29T10:00:00Z"
+}
+```
+
+### Success
+
+```text
+200 OK
+```
+
+Unauthenticated:
+
+```text
+401 Unauthorized
+```
+
+---
+
+# 9. Ticket Endpoints Overview
+
+| Method | Endpoint | Customer | Agent | Admin |
+|---|---|---:|---:|---:|
+| POST | `/tickets` | Yes | No | No |
+| GET | `/tickets` | Own only | All | All |
+| GET | `/tickets/{id}` | Own only | Yes | Yes |
+| PATCH | `/tickets/{id}/status` | Limited | Yes | Yes |
+| PATCH | `/tickets/{id}/priority` | No | Yes | Yes |
+| PATCH | `/tickets/{id}/assignee` | No | Yes | Yes |
+| GET | `/tickets/{id}/comments` | Own only | Yes | Yes |
+| POST | `/tickets/{id}/comments` | Own only | Yes | Yes |
+| GET | `/tickets/{id}/history` | Own only | Yes | Yes |
+
+No ticket DELETE endpoint exists.
+
+---
+
+# 10. POST `/api/v1/tickets`
+
+Creates a new support ticket.
+
+### Access
+
+CUSTOMER
+
+### Request
+
+```json
+{
+  "title": "Unable to reset my password",
+  "description": "I requested a password reset several times but no email has arrived."
+}
+```
+
+The client does **not** provide:
+
+- customer ID;
+- ticket ID;
+- status;
+- priority;
+- assignee;
+- timestamps.
+
+The backend derives these values.
+
+### Server defaults
+
+```text
+customer = authenticated user
+status = OPEN
+priority = MEDIUM
+assignedAgent = null
+```
+
+### Success
+
+```text
+201 Created
+```
+
+The response should include a `Location` header such as:
+
+```text
+/api/v1/tickets/1042
+```
+
+### Response
+
+```json
+{
+  "id": 1042,
+  "reference": "SUP-1042",
+  "title": "Unable to reset my password",
+  "description": "I requested a password reset several times but no email has arrived.",
+  "status": "OPEN",
+  "priority": "MEDIUM",
+  "customer": {
+    "id": 17,
+    "displayName": "Alex Morgan"
+  },
+  "assignedAgent": null,
+  "createdAt": "2026-09-29T10:35:00Z",
+  "updatedAt": "2026-09-29T10:35:00Z",
+  "resolvedAt": null,
+  "closedAt": null,
+  "version": 0
+}
+```
+
+---
+
+# 11. GET `/api/v1/tickets`
+
+Returns a paginated ticket list.
+
+The data visible through this endpoint depends on the authenticated role.
+
+### CUSTOMER
+
+Returns only tickets where:
+
+```text
+ticket.customer.id == authenticatedUser.id
+```
+
+### AGENT
+
+Returns the complete support queue.
+
+### ADMIN
+
+Returns the complete support queue.
+
+Authorization filtering must occur on the backend.
+
+---
+
+# 12. Ticket Query Parameters
+
+Supported query parameters:
+
+```text
+status
+priority
+assignedAgentId
+unassigned
+search
+page
+size
+sort
+```
+
+Example:
+
+```text
+GET /api/v1/tickets
+    ?status=OPEN
+    &priority=HIGH
+    &unassigned=true
+    &page=0
+    &size=20
+    &sort=updatedAt,desc
+```
+
+---
+
+# 13. Ticket Filters
+
+## status
+
+Example:
+
+```text
+status=OPEN
+```
+
+Permitted values:
+
+```text
+OPEN
+IN_PROGRESS
+RESOLVED
+CLOSED
+```
+
+---
+
+## priority
+
+Example:
+
+```text
+priority=HIGH
+```
+
+Permitted values:
+
+```text
+LOW
+MEDIUM
+HIGH
+URGENT
+```
+
+---
+
+## assignedAgentId
+
+Example:
+
+```text
+assignedAgentId=22
+```
+
+Returns tickets currently assigned to that agent.
+
+---
+
+## unassigned
+
+Example:
+
+```text
+unassigned=true
+```
+
+Returns tickets where:
+
+```text
+assigned_agent_id IS NULL
+```
+
+Supplying both:
+
+```text
+assignedAgentId=22
+unassigned=true
+```
+
+is invalid and returns:
+
+```text
+400 Bad Request
+```
+
+---
+
+## search
+
+Examples:
+
+```text
+search=password
+```
+
+or:
+
+```text
+search=SUP-1042
+```
+
+Search supports:
+
+- ticket title;
+- exact/parsed ticket reference.
+
+---
+
+# 14. Pagination
+
+Default values:
+
+```text
+page = 0
+size = 20
+```
+
+Maximum page size:
+
+```text
+100
+```
+
+Example response:
+
+```json
+{
+  "content": [
+    {
+      "id": 1042,
+      "reference": "SUP-1042",
+      "title": "Unable to reset my password",
+      "status": "IN_PROGRESS",
+      "priority": "HIGH",
+      "customer": {
+        "id": 17,
+        "displayName": "Alex Morgan"
+      },
+      "assignedAgent": {
+        "id": 8,
+        "displayName": "Maria Garcia"
+      },
+      "createdAt": "2026-09-29T10:35:00Z",
+      "updatedAt": "2026-09-29T11:12:00Z",
+      "version": 3
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 47,
+  "totalPages": 3,
+  "first": true,
+  "last": false
+}
+```
+
+---
+
+# 15. Sorting
+
+Default sort:
+
+```text
+updatedAt,desc
+```
+
+Allowed sort properties:
+
+```text
+createdAt
+updatedAt
+priority
+status
+title
+```
+
+Example:
+
+```text
+sort=createdAt,desc
+```
+
+Unsupported sort properties return:
+
+```text
+400 Bad Request
+```
+
+This prevents clients from arbitrarily exposing internal persistence fields.
+
+---
+
+# 16. TicketSummaryResponse
+
+Ticket collections use a smaller DTO.
+
+```json
+{
+  "id": 1042,
+  "reference": "SUP-1042",
+  "title": "Unable to reset my password",
+  "status": "IN_PROGRESS",
+  "priority": "HIGH",
+  "customer": {
+    "id": 17,
+    "displayName": "Alex Morgan"
+  },
+  "assignedAgent": {
+    "id": 8,
+    "displayName": "Maria Garcia"
+  },
+  "createdAt": "2026-09-29T10:35:00Z",
+  "updatedAt": "2026-09-29T11:12:00Z",
+  "version": 3
+}
+```
+
+The description is intentionally omitted from collection responses.
+
+---
+
+# 17. GET `/api/v1/tickets/{id}`
+
+Returns full ticket details.
+
+Example:
+
+```text
+GET /api/v1/tickets/1042
+```
+
+### Access
+
+CUSTOMER:
+
+only if the ticket belongs to the authenticated customer.
+
+AGENT:
+
+allowed.
+
+ADMIN:
+
+allowed.
+
+### Response
+
+```json
+{
+  "id": 1042,
+  "reference": "SUP-1042",
+  "title": "Unable to reset my password",
+  "description": "The reset email never arrives.",
+  "status": "IN_PROGRESS",
+  "priority": "HIGH",
+  "customer": {
+    "id": 17,
+    "displayName": "Alex Morgan"
+  },
+  "assignedAgent": {
+    "id": 8,
+    "displayName": "Maria Garcia"
+  },
+  "createdAt": "2026-09-29T10:35:00Z",
+  "updatedAt": "2026-09-29T11:12:00Z",
+  "resolvedAt": null,
+  "closedAt": null,
+  "version": 3
+}
+```
+
+Comments and history are retrieved through their own endpoints.
+
+This avoids an increasingly large ticket payload.
+
+---
+
+# 18. Resource Access Behaviour
+
+If ticket `1042` exists but belongs to another Customer, the API should return:
+
+```text
+404 Not Found
+```
+
+rather than revealing:
+
+```text
+403 Forbidden
+```
+
+to the unauthorized customer.
+
+This prevents confirming the existence of another customer's private ticket.
+
+Agents and Administrators may receive conventional authorization errors where appropriate.
+
+---
+
+# 19. PATCH `/api/v1/tickets/{id}/status`
+
+Changes ticket status.
+
+### Access
+
+AGENT  
+ADMIN  
+CUSTOMER only for permitted customer transition
+
+### Request
+
+```json
+{
+  "status": "IN_PROGRESS",
+  "version": 3
+}
+```
+
+`version` represents the version of the ticket the client last loaded.
+
+### Allowed customer action
+
+Customer:
+
+```text
+RESOLVED → IN_PROGRESS
+```
+
+for their own ticket.
+
+Customers cannot perform arbitrary status transitions.
+
+---
+
+# 20. Successful Status Update
+
+### Response
+
+```text
+200 OK
+```
+
+```json
+{
+  "id": 1042,
+  "reference": "SUP-1042",
+  "status": "IN_PROGRESS",
+  "resolvedAt": null,
+  "closedAt": null,
+  "updatedAt": "2026-09-29T12:15:00Z",
+  "version": 4
+}
+```
+
+The operation also creates a `TicketHistory` record.
+
+---
+
+# 21. Invalid Status Transition
+
+Example:
+
+```text
+OPEN → CLOSED
+```
+
+Response:
+
+```text
+409 Conflict
+```
+
+```json
+{
+  "type": "/problems/invalid-status-transition",
+  "title": "Invalid ticket status transition",
+  "status": 409,
+  "detail": "Ticket cannot transition from OPEN to CLOSED.",
+  "instance": "/api/v1/tickets/1042/status",
+  "code": "INVALID_STATUS_TRANSITION"
+}
+```
+
+---
+
+# 22. PATCH `/api/v1/tickets/{id}/priority`
+
+Changes ticket priority.
+
+### Access
+
+AGENT  
+ADMIN
+
+### Request
+
+```json
+{
+  "priority": "URGENT",
+  "version": 4
+}
+```
+
+### Response
+
+```text
+200 OK
+```
+
+```json
+{
+  "id": 1042,
+  "reference": "SUP-1042",
+  "priority": "URGENT",
+  "updatedAt": "2026-09-29T12:20:00Z",
+  "version": 5
+}
+```
+
+A ticket-history record must be created.
+
+Customers receive:
+
+```text
+403 Forbidden
+```
+
+---
+
+# 23. PATCH `/api/v1/tickets/{id}/assignee`
+
+Assigns, reassigns, or unassigns a ticket.
+
+### Access
+
+AGENT  
+ADMIN
+
+### Assign request
+
+```json
+{
+  "agentId": 8,
+  "version": 5
+}
+```
+
+### Unassign request
+
+```json
+{
+  "agentId": null,
+  "version": 5
+}
+```
+
+### Business rules
+
+The target account must:
+
+- exist;
+- be active;
+- have an assignable Agent role.
+
+Attempting to assign a Customer returns:
+
+```text
+409 Conflict
+```
+
+with:
+
+```text
+INVALID_ASSIGNEE
+```
+
+### Response
+
+```json
+{
+  "id": 1042,
+  "reference": "SUP-1042",
+  "assignedAgent": {
+    "id": 8,
+    "displayName": "Maria Garcia"
+  },
+  "updatedAt": "2026-09-29T12:24:00Z",
+  "version": 6
+}
+```
+
+Assignment changes generate ticket-history records.
+
+---
+
+# 24. Optimistic Concurrency
+
+All ticket mutation requests include the ticket version last seen by the client.
+
+Example:
+
+```json
+{
+  "status": "RESOLVED",
+  "version": 6
+}
+```
+
+If another user has modified the ticket and the current database version is `7`, the request must not silently overwrite the newer state.
+
+Response:
+
+```text
+409 Conflict
+```
+
+```json
+{
+  "type": "/problems/stale-resource",
+  "title": "Ticket has changed",
+  "status": 409,
+  "detail": "This ticket was modified by another user. Reload the ticket and try again.",
+  "instance": "/api/v1/tickets/1042/status",
+  "code": "STALE_RESOURCE"
+}
+```
+
+The frontend should then refresh the ticket.
+
+---
+
+# 25. Comment Endpoints
+
+## GET `/api/v1/tickets/{id}/comments`
+
+Returns comments for a ticket in chronological order.
+
+### Access
+
+CUSTOMER:
+
+only for own ticket.
+
+AGENT / ADMIN:
+
+allowed.
+
+### Query parameters
+
+```text
+page
+size
+```
+
+Default:
+
+```text
+page=0
+size=50
+```
+
+### Response
+
+```json
+{
+  "content": [
+    {
+      "id": 301,
+      "author": {
+        "id": 17,
+        "displayName": "Alex Morgan",
+        "role": "CUSTOMER"
+      },
+      "content": "The reset email still hasn't arrived.",
+      "createdAt": "2026-09-29T10:36:00Z"
+    },
+    {
+      "id": 302,
+      "author": {
+        "id": 8,
+        "displayName": "Maria Garcia",
+        "role": "AGENT"
+      },
+      "content": "I've checked the account and am investigating.",
+      "createdAt": "2026-09-29T10:42:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 50,
+  "totalElements": 2,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+---
+
+# 26. POST `/api/v1/tickets/{id}/comments`
+
+Adds a comment.
+
+### Request
+
+```json
+{
+  "content": "The reset email still hasn't arrived."
+}
+```
+
+The client does not provide:
+
+```text
+authorId
+ticketId
+createdAt
+```
+
+### Success
+
+```text
+201 Created
+```
+
+### Response
+
+```json
+{
+  "id": 303,
+  "author": {
+    "id": 17,
+    "displayName": "Alex Morgan",
+    "role": "CUSTOMER"
+  },
+  "content": "The reset email still hasn't arrived.",
+  "createdAt": "2026-09-29T12:30:00Z"
+}
+```
+
+Adding a comment updates:
+
+```text
+ticket.updatedAt
+```
+
+---
+
+# 27. Comment Validation
+
+Comment content:
+
+```text
+required
+1–3000 meaningful characters
+```
+
+Whitespace-only content is invalid.
+
+Example:
+
+```json
+{
+  "content": "     "
+}
+```
+
+returns:
+
+```text
+400 Bad Request
+```
+
+---
+
+# 28. Comments on Closed Tickets
+
+Attempting to comment on a CLOSED ticket returns:
+
+```text
+409 Conflict
+```
+
+```json
+{
+  "type": "/problems/ticket-closed",
+  "title": "Ticket is closed",
+  "status": 409,
+  "detail": "Comments cannot be added to a closed ticket.",
+  "instance": "/api/v1/tickets/1042/comments",
+  "code": "TICKET_CLOSED"
+}
+```
+
+There is no:
+
+```text
+PATCH /comments/{id}
+```
+
+and no:
+
+```text
+DELETE /comments/{id}
+```
+
+in MVP v1.
+
+Comments are immutable.
+
+---
+
+# 29. Ticket History Endpoint
+
+## GET `/api/v1/tickets/{id}/history`
+
+Returns ticket audit history.
+
+### Access
+
+CUSTOMER:
+
+own tickets only.
+
+AGENT / ADMIN:
+
+allowed.
+
+### Response
+
+```json
+[
+  {
+    "id": 9001,
+    "eventType": "TICKET_CREATED",
+    "fieldName": null,
+    "oldValue": null,
+    "newValue": null,
+    "oldDisplayValue": null,
+    "newDisplayValue": null,
+    "actor": {
+      "id": 17,
+      "displayName": "Alex Morgan"
+    },
+    "createdAt": "2026-09-29T10:35:00Z"
+  },
+  {
+    "id": 9002,
+    "eventType": "ASSIGNMENT_CHANGED",
+    "fieldName": "assignedAgent",
+    "oldValue": null,
+    "newValue": "8",
+    "oldDisplayValue": "Unassigned",
+    "newDisplayValue": "Maria Garcia",
+    "actor": {
+      "id": 8,
+      "displayName": "Maria Garcia"
+    },
+    "createdAt": "2026-09-29T10:42:00Z"
+  },
+  {
+    "id": 9003,
+    "eventType": "STATUS_CHANGED",
+    "fieldName": "status",
+    "oldValue": "OPEN",
+    "newValue": "IN_PROGRESS",
+    "oldDisplayValue": "Open",
+    "newDisplayValue": "In Progress",
+    "actor": {
+      "id": 8,
+      "displayName": "Maria Garcia"
+    },
+    "createdAt": "2026-09-29T10:43:00Z"
+  }
+]
+```
+
+No endpoint exists to create, update, or delete history entries.
+
+---
+
+# 30. Agent Lookup
+
+## GET `/api/v1/agents`
+
+Returns active agents available for ticket assignment.
+
+### Access
+
+AGENT  
+ADMIN
+
+### Response
+
+```json
+[
+  {
+    "id": 8,
+    "displayName": "Maria Garcia",
+    "email": "maria@example.com"
+  },
+  {
+    "id": 9,
+    "displayName": "Daniel Lee",
+    "email": "daniel@example.com"
+  }
+]
+```
+
+Inactive agents are excluded.
+
+Customers cannot access this endpoint.
+
+---
+
+# 31. Administration Endpoints
+
+| Method | Endpoint | Admin only |
+|---|---|---:|
+| GET | `/users` | Yes |
+| PATCH | `/users/{id}/role` | Yes |
+| PATCH | `/users/{id}/active` | Yes |
+
+---
+
+# 32. GET `/api/v1/users`
+
+Returns application users.
+
+### Access
+
+ADMIN
+
+### Query parameters
+
+```text
+role
+active
+search
+page
+size
+sort
+```
+
+Example:
+
+```text
+GET /api/v1/users?role=AGENT&active=true&page=0&size=20
+```
+
+### Response
+
+```json
+{
+  "content": [
+    {
+      "id": 8,
+      "firstName": "Maria",
+      "lastName": "Garcia",
+      "email": "maria@example.com",
+      "role": "AGENT",
+      "active": true,
+      "createdAt": "2026-08-15T09:00:00Z"
+    }
+  ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 6,
+  "totalPages": 1,
+  "first": true,
+  "last": true
+}
+```
+
+---
+
+# 33. PATCH `/api/v1/users/{id}/role`
+
+Changes a user's role.
+
+### Access
+
+ADMIN
+
+### Request
+
+```json
+{
+  "role": "AGENT"
+}
+```
+
+### Response
+
+```json
+{
+  "id": 17,
+  "firstName": "Alex",
+  "lastName": "Morgan",
+  "email": "alex@example.com",
+  "role": "AGENT",
+  "active": true
+}
+```
+
+### Business protections
+
+The API must reject changes that would violate administrative invariants.
+
+For example:
+
+- removing the role of the final active Administrator;
+- assigning an unsupported role value.
+
+Such conflicts return:
+
+```text
+409 Conflict
+```
+
+---
+
+# 34. PATCH `/api/v1/users/{id}/active`
+
+Activates or deactivates an account.
+
+### Access
+
+ADMIN
+
+### Request
+
+```json
+{
+  "active": false
+}
+```
+
+### Response
+
+```json
+{
+  "id": 8,
+  "firstName": "Maria",
+  "lastName": "Garcia",
+  "email": "maria@example.com",
+  "role": "AGENT",
+  "active": false
+}
+```
+
+### Agent deactivation conflict
+
+If an Agent still owns OPEN or IN_PROGRESS tickets, deactivation should be rejected.
+
+Response:
+
+```text
+409 Conflict
+```
+
+```json
+{
+  "type": "/problems/agent-has-active-tickets",
+  "title": "Agent has active tickets",
+  "status": 409,
+  "detail": "Reassign or unassign the agent's active tickets before deactivating the account.",
+  "code": "AGENT_HAS_ACTIVE_TICKETS"
+}
+```
+
+The final active Administrator should not be deactivated.
+
+---
+
+# 35. Standard HTTP Status Codes
+
+ResolveDesk should use HTTP status codes consistently.
+
+| Status | Meaning |
+|---|---|
+| 200 | Successful retrieval/update |
+| 201 | Resource successfully created |
+| 204 | Successful operation with no body |
+| 400 | Invalid request or validation |
+| 401 | Authentication required/failed |
+| 403 | Authenticated but unauthorized |
+| 404 | Resource unavailable/not visible |
+| 409 | Valid request conflicts with business state |
+| 500 | Unexpected server failure |
+
+---
+
+# 36. Standard Error Format
+
+Errors should use one consistent Problem Details-style structure.
+
+Example:
+
+```json
+{
+  "type": "/problems/validation-error",
+  "title": "Validation failed",
+  "status": 400,
+  "detail": "One or more request fields are invalid.",
+  "instance": "/api/v1/tickets",
+  "code": "VALIDATION_ERROR",
+  "fieldErrors": {
+    "title": "Title must contain at least 3 characters.",
+    "description": "Description must contain at least 10 characters."
+  }
+}
+```
+
+The `code` value provides a stable machine-readable identifier for the React application.
+
+---
+
+# 37. Error Codes
+
+Initial error codes should include:
+
+```text
+VALIDATION_ERROR
+
+AUTHENTICATION_REQUIRED
+INVALID_CREDENTIALS
+ACCOUNT_INACTIVE
+
+ACCESS_DENIED
+RESOURCE_NOT_FOUND
+
+EMAIL_ALREADY_EXISTS
+
+INVALID_STATUS_TRANSITION
+INVALID_ASSIGNEE
+TICKET_CLOSED
+STALE_RESOURCE
+
+AGENT_HAS_ACTIVE_TICKETS
+LAST_ACTIVE_ADMIN
+
+INTERNAL_ERROR
+```
+
+Frontend code should rely on stable `code` values rather than parsing human-readable messages.
+
+---
+
+# 38. Validation Error Example
+
+Request:
+
+```json
+{
+  "title": "Hi",
+  "description": ""
+}
+```
+
+Response:
+
+```text
+400 Bad Request
+```
+
+```json
+{
+  "type": "/problems/validation-error",
+  "title": "Validation failed",
+  "status": 400,
+  "detail": "One or more request fields are invalid.",
+  "instance": "/api/v1/tickets",
+  "code": "VALIDATION_ERROR",
+  "fieldErrors": {
+    "title": "Title must contain between 3 and 120 characters.",
+    "description": "Description must contain between 10 and 5000 characters."
+  }
+}
+```
+
+---
+
+# 39. Resource Not Found
+
+Example:
+
+```text
+GET /api/v1/tickets/999999
+```
+
+Response:
+
+```text
+404 Not Found
+```
+
+```json
+{
+  "type": "/problems/resource-not-found",
+  "title": "Ticket not found",
+  "status": 404,
+  "detail": "The requested ticket could not be found.",
+  "instance": "/api/v1/tickets/999999",
+  "code": "RESOURCE_NOT_FOUND"
+}
+```
+
+---
+
+# 40. Security Rules
+
+The API must never trust client-submitted ownership information.
+
+Examples:
+
+Ticket creation must use:
+
+```text
+authenticatedUser.id
+```
+
+not:
+
+```json
+{
+  "customerId": 17
+}
+```
+
+Comment creation must use:
+
+```text
+authenticatedUser.id
+```
+
+not:
+
+```json
+{
+  "authorId": 8
+}
+```
+
+Ticket history actor must be derived from the authenticated operation.
+
+---
+
+# 41. Mass Assignment Protection
+
+The API deliberately exposes narrow command endpoints.
+
+For example:
+
+```text
+PATCH /tickets/1042/status
+```
+
+can modify status.
+
+It cannot silently modify:
+
+- customer;
+- assignee;
+- title;
+- priority;
+- closed timestamp.
+
+Similarly:
+
+```text
+PATCH /tickets/1042/priority
+```
+
+modifies only priority.
+
+There will be no generic endpoint such as:
+
+```text
+PUT /tickets/1042
+```
+
+accepting the entire Ticket object.
+
+This reduces accidental or unauthorized field modification.
+
+---
+
+# 42. API DTO Catalogue
+
+## Requests
+
+```text
+RegisterRequest
+LoginRequest
+
+CreateTicketRequest
+ChangeTicketStatusRequest
+ChangeTicketPriorityRequest
+ChangeTicketAssigneeRequest
+
+CreateCommentRequest
+
+ChangeUserRoleRequest
+ChangeUserActiveStateRequest
+```
+
+---
+
+## Responses
+
+```text
+CurrentUserResponse
+UserSummaryResponse
+AgentSummaryResponse
+
+TicketSummaryResponse
+TicketDetailResponse
+TicketMutationResponse
+
+CommentResponse
+TicketHistoryResponse
+
+PageResponse<T>
+
+ProblemResponse
+```
+
+---
+
+# 43. Suggested Spring Controller Boundaries
+
+The HTTP controllers can map approximately to:
+
+```text
+AuthController
+
+CurrentUserController
+UserAdminController
+AgentController
+
+TicketController
+TicketStatusController
+TicketAssignmentController
+
+CommentController
+TicketHistoryController
+```
+
+This does not require creating a separate controller for every endpoint.
+
+The important rule is that controllers remain thin.
+
+Example responsibility:
+
+```text
+Controller:
+parse HTTP request
+validate DTO
+obtain authenticated identity
+call service
+map response
+```
+
+Not:
+
+```text
+Controller:
+decide business workflow
+manipulate JPA entities
+build audit history
+decide status transition legality
+```
+
+Those belong lower in the application/domain layer.
+
+---
+
+# 44. Example End-to-End API Flow
+
+A normal customer-to-resolution flow may look like:
+
+```text
+POST /auth/login
+        │
+        ▼
+POST /tickets
+        │
+        ▼
+SUP-1042 created as OPEN
+        │
+        ▼
+GET /tickets
+        │
+        │ Agent
+        ▼
+PATCH /tickets/1042/assignee
+        │
+        ▼
+PATCH /tickets/1042/status
+OPEN → IN_PROGRESS
+        │
+        ▼
+POST /tickets/1042/comments
+        │
+        ▼
+PATCH /tickets/1042/status
+IN_PROGRESS → RESOLVED
+        │
+        │ Customer still has problem
+        ▼
+PATCH /tickets/1042/status
+RESOLVED → IN_PROGRESS
+        │
+        ▼
+... further work ...
+        │
+        ▼
+PATCH /tickets/1042/status
+IN_PROGRESS → RESOLVED
+        │
+        ▼
+PATCH /tickets/1042/status
+RESOLVED → CLOSED
+```
+
+Throughout the process:
+
+```text
+GET /tickets/1042/history
+```
+
+provides the immutable audit trail.
+
+---
+
+# 45. OpenAPI Documentation
+
+The implemented Spring application should expose generated API documentation using OpenAPI.
+
+The goal is for the contract to be inspectable through tooling such as Swagger UI.
+
+However, generated documentation must reflect this agreed contract rather than replacing the planning process.
+
+Annotations should document:
+
+- request types;
+- responses;
+- status codes;
+- authentication requirements;
+- validation constraints.
+
+---
+
+# 46. Endpoints Explicitly Not Included
+
+MVP v1 does not expose:
+
+```text
+DELETE /tickets/{id}
+
+DELETE /comments/{id}
+
+PATCH /comments/{id}
+
+PATCH /tickets/{id}/customer
+
+POST /ticket-history
+
+PATCH /ticket-history/{id}
+
+DELETE /ticket-history/{id}
+```
+
+The absence of these routes is intentional.
+
+---
+
+# 47. Final Endpoint Map
+
+```text
+AUTHENTICATION
+
+POST   /api/v1/auth/register
+POST   /api/v1/auth/login
+POST   /api/v1/auth/logout
+GET    /api/v1/auth/csrf
+
+
+CURRENT USER
+
+GET    /api/v1/users/me
+
+
+TICKETS
+
+POST   /api/v1/tickets
+GET    /api/v1/tickets
+GET    /api/v1/tickets/{id}
+
+PATCH  /api/v1/tickets/{id}/status
+PATCH  /api/v1/tickets/{id}/priority
+PATCH  /api/v1/tickets/{id}/assignee
+
+
+COMMENTS
+
+GET    /api/v1/tickets/{id}/comments
+POST   /api/v1/tickets/{id}/comments
+
+
+HISTORY
+
+GET    /api/v1/tickets/{id}/history
+
+
+AGENTS
+
+GET    /api/v1/agents
+
+
+ADMINISTRATION
+
+GET    /api/v1/users
+PATCH  /api/v1/users/{id}/role
+PATCH  /api/v1/users/{id}/active
+```
+
+---
+
+# 48. API Acceptance Criteria
+
+The API design is considered ready for implementation when:
+
+- every MVP workflow has an endpoint;
+- every endpoint has defined authorization;
+- request ownership cannot be spoofed;
+- mutation routes change only intended fields;
+- status transitions remain domain-controlled;
+- errors follow one format;
+- pagination follows one format;
+- ticket mutations account for concurrent changes;
+- immutable resources have no edit/delete routes;
+- customers cannot discover other customers' ticket data;
+- DTOs rather than entities form the public contract;
+- business conflicts use meaningful responses;
+- the frontend can implement every required MVP screen using this API.
