@@ -1,5 +1,9 @@
 import { type FormEvent, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Button, ButtonLink } from '../../components/ui/Button'
+import { Alert } from '../../components/ui/Feedback'
+import { PageHeader } from '../../components/ui/PageHeader'
+import { Panel } from '../../components/ui/Panel'
 import { ApiError } from '../../api/client'
 import { createTicket } from '../../api/tickets'
 
@@ -26,7 +30,6 @@ export function CreateTicketPage() {
     setFieldErrors(validationErrors)
     setError(null)
     if (Object.keys(validationErrors).length > 0) return
-
     setSubmitting(true)
     try {
       const ticket = await createTicket({ title: title.trim(), description: description.trim() })
@@ -35,25 +38,11 @@ export function CreateTicketPage() {
       if (requestError instanceof ApiError) {
         setFieldErrors(requestError.problem.fieldErrors ?? {})
         setError(requestError.problem.detail ?? 'Unable to create your ticket.')
-      } else {
-        setError('Unable to create your ticket.')
-      }
+      } else setError('Unable to create your ticket.')
     } finally {
       setSubmitting(false)
     }
   }
 
-  return (
-    <section aria-labelledby="create-ticket-title" className="mx-auto max-w-2xl space-y-6">
-      <div><p className="text-sm font-medium uppercase tracking-wide text-sky-700">Customer support</p><h1 id="create-ticket-title" className="mt-2 text-3xl font-bold">Create a ticket</h1><p className="mt-2 text-slate-600">Describe the issue and the support team will review it.</p></div>
-      {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-800">{error}</p>}
-      <form className="space-y-4" noValidate onSubmit={handleSubmit}>
-        <label className="block font-medium" htmlFor="ticket-title">Title<input id="ticket-title" className="mt-1 block w-full rounded border p-2" value={title} onChange={event => setTitle(event.target.value)} maxLength={120} aria-describedby={fieldErrors.title ? 'ticket-title-error' : undefined} /></label>
-        {fieldErrors.title && <p id="ticket-title-error" role="alert" className="text-sm text-red-700">{fieldErrors.title}</p>}
-        <label className="block font-medium" htmlFor="ticket-description">Description<textarea id="ticket-description" className="mt-1 block min-h-40 w-full rounded border p-2" value={description} onChange={event => setDescription(event.target.value)} maxLength={5000} aria-describedby={fieldErrors.description ? 'ticket-description-error' : undefined} /></label>
-        {fieldErrors.description && <p id="ticket-description-error" role="alert" className="text-sm text-red-700">{fieldErrors.description}</p>}
-        <button className="rounded bg-sky-700 px-4 py-2 font-medium text-white disabled:opacity-60" disabled={submitting} type="submit">{submitting ? 'Creating ticket…' : 'Create ticket'}</button>
-      </form>
-    </section>
-  )
+  return <section className="mx-auto max-w-3xl space-y-6" aria-labelledby="create-ticket-title"><PageHeader id="create-ticket-title" eyebrow="Customer support" title="Create a ticket">Describe the issue clearly so the support team can begin helping you.</PageHeader>{error && <Alert tone="danger">{error}</Alert>}<Panel><form className="space-y-5" noValidate onSubmit={handleSubmit} aria-busy={submitting}><div><label className="rd-label" htmlFor="ticket-title">Title</label><input id="ticket-title" className="rd-input" value={title} onChange={event => setTitle(event.target.value)} maxLength={120} aria-invalid={Boolean(fieldErrors.title)} aria-describedby={fieldErrors.title ? 'ticket-title-error' : undefined} />{fieldErrors.title && <p id="ticket-title-error" className="rd-validation-message">{fieldErrors.title}</p>}</div><div><label className="rd-label" htmlFor="ticket-description">Description</label><textarea id="ticket-description" className="rd-textarea min-h-48" value={description} onChange={event => setDescription(event.target.value)} maxLength={5000} aria-invalid={Boolean(fieldErrors.description)} aria-describedby={fieldErrors.description ? 'ticket-description-error' : 'ticket-description-help'} /><div className="mt-1 flex justify-between gap-4 text-xs leading-5 text-slate-500"><p id="ticket-description-help">Include the relevant context and what you expected to happen.</p><p>{description.length}/5000</p></div>{fieldErrors.description && <p id="ticket-description-error" className="rd-validation-message">{fieldErrors.description}</p>}</div><div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-200 pt-5"><ButtonLink variant="secondary" to="/tickets">Cancel</ButtonLink><Button type="submit" disabled={submitting} aria-busy={submitting}>{submitting ? 'Creating ticket…' : 'Create ticket'}</Button></div></form></Panel></section>
 }

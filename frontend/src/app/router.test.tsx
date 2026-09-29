@@ -9,6 +9,7 @@ const administratorUser = { id: 1, firstName: 'Ada', lastName: 'Admin', email: '
 const ticket = { id: 42, reference: 'SUP-42', title: 'Cannot sign in', description: 'I cannot sign in to my ResolveDesk account.', status: 'OPEN' as const, priority: 'MEDIUM' as const, customer: { id: 17, displayName: 'Alex Morgan' }, assignedAgent: null, createdAt: '2026-09-29T10:00:00Z', updatedAt: '2026-09-29T10:00:00Z', resolvedAt: null, closedAt: null, version: 0 }
 const createdHistory = [{ id: 700, eventType: 'TICKET_CREATED' as const, fieldName: null, oldValue: null, newValue: null, oldDisplayValue: null, newDisplayValue: null, actor: { id: 17, displayName: 'Alex Morgan' }, createdAt: '2026-09-29T10:00:00Z' }]
 const emptyComments = { content: [], page: 0, size: 50, totalElements: 0, totalPages: 0, first: true, last: true }
+const emptyTicketPage = { content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -50,7 +51,7 @@ describe('identity flow', () => {
     fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'ExamplePassword123!' } })
     fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
     expect(await screen.findByRole('heading', { name: 'Welcome, Alex.' })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/auth/login', expect.objectContaining({ credentials: 'include', method: 'POST' }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/login', expect.objectContaining({ credentials: 'include', method: 'POST' }))
   })
 
   it('submits the registration form and returns to login', async () => {
@@ -70,15 +71,78 @@ describe('identity flow', () => {
   })
 
   it('logs out through the shared API layer and returns to login', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(authenticatedUser))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+    fetchMock.mockImplementation((url: string) => {
+      if (url === '/api/v1/auth/csrf') return Promise.resolve(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+      if (url === '/api/v1/users/me') return Promise.resolve(jsonResponse(authenticatedUser))
+      if (url === '/api/v1/auth/logout') return Promise.resolve(new Response(null, { status: 204 }))
+      if (url.startsWith('/api/v1/tickets')) return Promise.resolve(jsonResponse(emptyTicketPage))
+      return Promise.resolve(jsonResponse({ detail: 'Unexpected request' }, 500))
+    })
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Welcome, Alex.' })
     fireEvent.click(screen.getByRole('button', { name: 'Log out Alex' }))
     expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument()
-    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/auth/logout', expect.objectContaining({ credentials: 'include', method: 'POST' })))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/auth/logout', expect.objectContaining({ credentials: 'include', method: 'POST' })))
+  })
+
+  it('shows local validation messages before submitting an incomplete login', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'AUTHENTICATION_REQUIRED' }, 401))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Sign in' })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByText('Enter your email address.')).toBeInTheDocument()
+    expect(screen.getByText('Enter your password.')).toBeInTheDocument()
+  })
+
+  it('shows registration guidance and validation before submitting incomplete details', async () => {
+    window.history.replaceState({}, '', '/register')
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'AUTHENTICATION_REQUIRED' }, 401))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Create an account' })
+    fireEvent.click(screen.getByRole('button', { name: 'Create account' }))
+    expect(await screen.findByText('Enter your first name.')).toBeInTheDocument()
+    expect(screen.getByText('Use at least 12 characters for your password.')).toBeInTheDocument()
+    expect(screen.getByText('Use an address you can access for account support.')).toBeInTheDocument()
+  })
+})
+
+describe('customer dashboard', () => {
+  const fetchMock = vi.fn()
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreCustomerDashboard(recent = { content: [ticket], page: 0, size: 5, totalElements: 1, totalPages: 1, first: true, last: true }) {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(authenticatedUser))
+    fetchMock.mockResolvedValueOnce(jsonResponse(recent))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...emptyTicketPage, totalElements: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyTicketPage))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyTicketPage))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyTicketPage))
+  }
+
+  it('renders a ticket overview and recent customer tickets from existing ticket data', async () => {
+    restoreCustomerDashboard()
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Recent tickets' })).toBeInTheDocument()
+    expect(screen.getByText('SUP-42')).toBeInTheDocument()
+    expect(screen.getAllByText('Open')).toHaveLength(2)
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets?status=OPEN&page=0&size=1', expect.objectContaining({ credentials: 'include' }))
+  })
+
+  it('shows a useful empty state when the customer has no tickets', async () => {
+    restoreCustomerDashboard({ ...emptyTicketPage, size: 5 })
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'No support requests yet' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Create your first ticket' })).toBeInTheDocument()
   })
 })
 
@@ -252,8 +316,8 @@ describe('customer ticket workspace', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [ticket], page: 0, size: 20, totalElements: 1, totalPages: 1, first: true, last: true }))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Your tickets' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /SUP-42/ })).toBeInTheDocument()
-    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets', expect.objectContaining({ credentials: 'include' }))
+    expect(await screen.findAllByRole('link', { name: /SUP-42/ })).toHaveLength(2)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?page=0&size=20&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' }))
   })
 
   it('renders the empty ticket-list state', async () => {

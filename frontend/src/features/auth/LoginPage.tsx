@@ -1,7 +1,20 @@
 import { type FormEvent, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Button } from '../../components/ui/Button'
+import { Alert } from '../../components/ui/Feedback'
 import { ApiError } from '../../api/client'
 import { useAuth } from './AuthContext'
+import { AuthSurface } from './AuthSurface'
+
+type FieldErrors = Partial<Record<'email' | 'password', string>>
+
+function validate(email: string, password: string): FieldErrors {
+  const errors: FieldErrors = {}
+  if (!email.trim()) errors.email = 'Enter your email address.'
+  else if (!/^\S+@\S+\.\S+$/.test(email.trim())) errors.email = 'Enter a valid email address.'
+  if (!password) errors.password = 'Enter your password.'
+  return errors
+}
 
 export function LoginPage() {
   const { login } = useAuth()
@@ -9,35 +22,30 @@ export function LoginPage() {
   const location = useLocation()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const registrationMessage = location.state as { registered?: boolean } | null
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    const validationErrors = validate(email, password)
+    setFieldErrors(validationErrors)
     setError(null)
+    if (Object.keys(validationErrors).length > 0) return
     setSubmitting(true)
     try {
-      await login({ email, password })
+      await login({ email: email.trim(), password })
       navigate('/', { replace: true })
     } catch (requestError) {
-      setError(requestError instanceof ApiError ? requestError.message : 'Unable to sign in.')
+      if (requestError instanceof ApiError) {
+        setFieldErrors(requestError.problem.fieldErrors ?? {})
+        setError(requestError.problem.detail ?? 'Unable to sign in.')
+      } else setError('Unable to sign in.')
     } finally {
       setSubmitting(false)
     }
   }
 
-  return (
-    <section aria-labelledby="login-title" className="mx-auto max-w-md space-y-6">
-      <div><p className="text-sm font-medium uppercase tracking-wide text-sky-700">ResolveDesk</p><h1 id="login-title" className="mt-2 text-3xl font-bold">Sign in</h1></div>
-      {registrationMessage?.registered && <p role="status" className="rounded bg-emerald-50 p-3 text-emerald-800">Account created. You can now sign in.</p>}
-      {error && <p role="alert" className="rounded bg-red-50 p-3 text-red-800">{error}</p>}
-      <form className="space-y-4" onSubmit={handleSubmit}>
-        <label className="block font-medium" htmlFor="login-email">Email<input id="login-email" className="mt-1 block w-full rounded border p-2" type="email" value={email} onChange={event => setEmail(event.target.value)} required /></label>
-        <label className="block font-medium" htmlFor="login-password">Password<input id="login-password" className="mt-1 block w-full rounded border p-2" type="password" value={password} onChange={event => setPassword(event.target.value)} required /></label>
-        <button className="rounded bg-sky-700 px-4 py-2 font-medium text-white disabled:opacity-60" disabled={submitting} type="submit">{submitting ? 'Signing in…' : 'Sign in'}</button>
-      </form>
-      <p>Need an account? <Link className="text-sky-700 underline" to="/register">Register</Link></p>
-    </section>
-  )
+  return <AuthSurface title="Sign in" description="Access your ResolveDesk support workspace."><div className="space-y-5">{registrationMessage?.registered && <Alert tone="success">Account created. You can now sign in.</Alert>}{error && <Alert tone="danger">{error}</Alert>}<form className="space-y-4" noValidate onSubmit={handleSubmit} aria-busy={submitting}><div><label className="rd-label" htmlFor="login-email">Email</label><input id="login-email" className="rd-input" type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} aria-invalid={Boolean(fieldErrors.email)} aria-describedby={fieldErrors.email ? 'login-email-error' : undefined} />{fieldErrors.email && <p id="login-email-error" className="rd-validation-message">{fieldErrors.email}</p>}</div><div><label className="rd-label" htmlFor="login-password">Password</label><input id="login-password" className="rd-input" type="password" autoComplete="current-password" value={password} onChange={event => setPassword(event.target.value)} aria-invalid={Boolean(fieldErrors.password)} aria-describedby={fieldErrors.password ? 'login-password-error' : undefined} />{fieldErrors.password && <p id="login-password-error" className="rd-validation-message">{fieldErrors.password}</p>}</div><Button className="w-full" type="submit" disabled={submitting} aria-busy={submitting}>{submitting ? 'Signing in…' : 'Sign in'}</Button></form><p className="border-t border-slate-200 pt-5 text-center text-sm text-slate-600">New to ResolveDesk? <Link className="font-semibold text-sky-800 underline underline-offset-2" to="/register">Create an account</Link></p></div></AuthSurface>
 }
