@@ -379,6 +379,7 @@ describe('ticket assignment and lifecycle controls', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ticket actions' })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Change priority')).not.toBeInTheDocument()
   })
 })
 
@@ -449,5 +450,77 @@ describe('ticket conversation', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('alert')).toHaveTextContent('Conversation is unavailable.')
     expect(screen.queryByRole('button', { name: 'Add comment' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ticket priority controls', () => {
+  const fetchMock = vi.fn()
+  const agents = [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com' }]
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/tickets/42')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreSession(user: CurrentUser) {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(user))
+  }
+
+  function loadStaffTicket(ticketResponse = ticket) {
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticketResponse))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+  }
+
+  it('shows the current priority and lets an agent change it through the shared API layer', async () => {
+    restoreSession(agentUser)
+    loadStaffTicket()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'priority-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', priority: 'URGENT', updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, priority: 'URGENT', version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    render(<AppRouter />)
+    expect(await screen.findByText('MEDIUM')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Change priority'), { target: { value: 'URGENT' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update priority' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/priority', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ priority: 'URGENT', version: 0 }) })))
+    expect(await screen.findByText('URGENT')).toBeInTheDocument()
+  })
+
+  it('allows an administrator but never exposes priority mutation to customers or closed tickets', async () => {
+    restoreSession({ ...agentUser, role: 'ADMIN' })
+    loadStaffTicket()
+    render(<AppRouter />)
+    expect(await screen.findByLabelText('Change priority')).toBeInTheDocument()
+  })
+
+  it('keeps customer and closed-ticket priority displays read-only', async () => {
+    restoreSession(authenticatedUser)
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    render(<AppRouter />)
+    expect(await screen.findByText('MEDIUM')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Change priority')).not.toBeInTheDocument()
+  })
+
+  it('reloads after a stale priority response and displays API errors', async () => {
+    restoreSession(agentUser)
+    loadStaffTicket()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'priority-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, priority: 'HIGH', version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    render(<AppRouter />)
+    await screen.findByLabelText('Change priority')
+    fireEvent.change(screen.getByLabelText('Change priority'), { target: { value: 'URGENT' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update priority' }))
+    expect(await screen.findByText('This ticket changed while you were viewing it. The latest version has been loaded.')).toBeInTheDocument()
+    expect(screen.getByText('HIGH')).toBeInTheDocument()
   })
 })

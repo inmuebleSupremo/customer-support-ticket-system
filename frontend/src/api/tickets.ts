@@ -134,3 +134,10 @@ export function changeTicketStatus(id: number, status: TicketDetail['status'], v
     body: JSON.stringify({ status, version })
   }, true)
 }
+
+export function changeTicketPriority(id: number, priority: TicketDetail['priority'], version: number) {
+  return apiRequest(`/tickets/${id}/priority`, {
+    method: 'PATCH',
+    body: JSON.stringify({ priority, version })
+  }, true)
+}

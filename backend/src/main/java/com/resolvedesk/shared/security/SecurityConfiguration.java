@@ -75,6 +75,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/v1/agents").hasAnyRole("AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/assignee").hasAnyRole("AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/status").hasAnyRole("CUSTOMER", "AGENT", "ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/priority").hasAnyRole("AGENT", "ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint((request, response, exception) -> writeProblem(

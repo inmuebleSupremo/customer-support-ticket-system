@@ -2,8 +2,11 @@ package com.resolvedesk.tickets.application;
 
 import com.resolvedesk.tickets.api.ChangeTicketAssigneeRequest;
 import com.resolvedesk.tickets.api.ChangeTicketStatusRequest;
+import com.resolvedesk.tickets.api.ChangeTicketPriorityRequest;
 import com.resolvedesk.tickets.api.TicketAssignmentMutationResponse;
 import com.resolvedesk.tickets.api.TicketStatusMutationResponse;
+import com.resolvedesk.tickets.api.TicketPriorityMutationResponse;
+import com.resolvedesk.tickets.domain.TicketPriority;
 import com.resolvedesk.tickets.domain.Ticket;
 import com.resolvedesk.tickets.domain.TicketStatus;
 import com.resolvedesk.tickets.history.domain.TicketHistory;
@@ -81,6 +84,21 @@ public class TicketWorkflowService {
         ticketRepository.saveAndFlush(ticket);
         ticketHistoryRepository.save(TicketHistory.statusChanged(ticket, actor, oldStatus.name(), request.status().name()));
         return TicketResponseMapper.toStatusMutation(ticket);
+    }
+
+    @Transactional
+    public TicketPriorityMutationResponse changePriority(User actor, long ticketId, ChangeTicketPriorityRequest request) {
+        if (actor.getRole() == UserRole.CUSTOMER) {
+            throw new AccessDeniedException("Customers cannot change ticket priority.");
+        }
+        Ticket ticket = findAccessibleTicket(actor, ticketId);
+        requireNotClosed(ticket);
+        requireCurrentVersion(ticket, request.version());
+        TicketPriority oldPriority = ticket.getPriority();
+        ticket.changePriority(request.priority());
+        ticketRepository.saveAndFlush(ticket);
+        ticketHistoryRepository.save(TicketHistory.priorityChanged(ticket, actor, oldPriority.name(), request.priority().name()));
+        return TicketResponseMapper.toPriorityMutation(ticket);
     }
 
     private Ticket findAccessibleTicket(User actor, long ticketId) {

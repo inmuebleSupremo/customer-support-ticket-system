@@ -96,6 +96,10 @@ public class Ticket {
         }
     }
 
+    public void changePriority(TicketPriority newPriority) {
+        priority = newPriority;
+    }
+
     public void touch() {
         updatedAt = Instant.now();
     }

@@ -3,6 +3,7 @@ package com.resolvedesk.tickets.application;
 import com.resolvedesk.tickets.api.TicketDetailResponse;
 import com.resolvedesk.tickets.api.TicketAssignmentMutationResponse;
 import com.resolvedesk.tickets.api.TicketStatusMutationResponse;
+import com.resolvedesk.tickets.api.TicketPriorityMutationResponse;
 import com.resolvedesk.tickets.api.TicketSummaryResponse;
 import com.resolvedesk.tickets.api.UserSummaryResponse;
 import com.resolvedesk.tickets.domain.Ticket;
@@ -53,6 +54,11 @@ public final class TicketResponseMapper {
     public static TicketAssignmentMutationResponse toAssignmentMutation(Ticket ticket) {
         return new TicketAssignmentMutationResponse(ticket.getId(), TicketReference.format(ticket.getId()),
                 ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
+                ticket.getUpdatedAt(), ticket.getVersion());
+    }
+
+    public static TicketPriorityMutationResponse toPriorityMutation(Ticket ticket) {
+        return new TicketPriorityMutationResponse(ticket.getId(), TicketReference.format(ticket.getId()), ticket.getPriority(),
                 ticket.getUpdatedAt(), ticket.getVersion());
     }
 

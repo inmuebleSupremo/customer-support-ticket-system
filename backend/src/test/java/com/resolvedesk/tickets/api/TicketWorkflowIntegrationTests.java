@@ -2,6 +2,7 @@ package com.resolvedesk.tickets.api;
 
 import com.resolvedesk.auth.application.AuthenticatedUser;
 import com.resolvedesk.tickets.domain.Ticket;
+import com.resolvedesk.tickets.domain.TicketPriority;
 import com.resolvedesk.tickets.history.domain.TicketHistory;
 import com.resolvedesk.tickets.history.persistence.TicketHistoryRepository;
 import com.resolvedesk.tickets.persistence.TicketRepository;
@@ -19,6 +20,8 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+
+import java.time.Instant;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.nullValue;
@@ -149,11 +152,44 @@ class TicketWorkflowIntegrationTests {
         mockMvc.perform(patch("/api/v1/tickets/{id}/assignee", ticket.getId()).with(authentication(agent)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"agentId\":null,\"version\":0}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("TICKET_CLOSED"));
+        changePriority(agent, ticket, "HIGH", 0).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("TICKET_CLOSED"));
+    }
+
+    @Test
+    void agentsAndAdministratorsCanChangeEveryPriorityWithAuditAndOptimisticLocking() throws Exception {
+        User agent = persistedUser("agent@example.com", "Test", "Agent", UserRole.AGENT);
+        User administrator = persistedUser("admin@example.com", "Test", "Administrator", UserRole.ADMIN);
+        User customer = persistedUser("customer@example.com", "Test", "Customer", UserRole.CUSTOMER);
+        Ticket ticket = persistedTicket(customer);
+        Instant originalUpdatedAt = ticket.getUpdatedAt();
+
+        changePriority(agent, ticket, "HIGH", 0).andExpect(status().isOk()).andExpect(jsonPath("$.priority").value("HIGH")).andExpect(jsonPath("$.version").value(1));
+        changePriority(administrator, ticket, "LOW", 1).andExpect(status().isOk()).andExpect(jsonPath("$.priority").value("LOW")).andExpect(jsonPath("$.version").value(2));
+        changePriority(agent, ticket, "URGENT", 2).andExpect(status().isOk()).andExpect(jsonPath("$.priority").value("URGENT")).andExpect(jsonPath("$.version").value(3));
+        changePriority(agent, ticket, "MEDIUM", 3).andExpect(status().isOk()).andExpect(jsonPath("$.priority").value("MEDIUM")).andExpect(jsonPath("$.version").value(4));
+        changePriority(agent, ticket, "HIGH", 1).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_RESOURCE"));
+        changePriority(customer, ticket, "HIGH", 4).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/tickets/{id}/history", ticket.getId()).with(authentication(agent)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(5))
+                .andExpect(jsonPath("$[1].eventType").value("PRIORITY_CHANGED"))
+                .andExpect(jsonPath("$[1].fieldName").value("priority"))
+                .andExpect(jsonPath("$[1].oldValue").value("MEDIUM"))
+                .andExpect(jsonPath("$[1].newValue").value("HIGH"))
+                .andExpect(jsonPath("$[1].actor.id").value(agent.getId()));
+        entityManager.clear();
+        Ticket updatedTicket = ticketRepository.findById(ticket.getId()).orElseThrow();
+        assertThat(updatedTicket.getPriority()).isEqualTo(TicketPriority.MEDIUM);
+        assertThat(updatedTicket.getUpdatedAt()).isAfter(originalUpdatedAt);
     }
 
     private org.springframework.test.web.servlet.ResultActions changeStatus(User actor, Ticket ticket, String status, long version) throws Exception {
         return mockMvc.perform(patch("/api/v1/tickets/{id}/status", ticket.getId()).with(authentication(actor)).with(csrf())
                 .contentType(MediaType.APPLICATION_JSON).content("{\"status\":\"" + status + "\",\"version\":" + version + "}"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions changePriority(User actor, Ticket ticket, String priority, long version) throws Exception {
+        return mockMvc.perform(patch("/api/v1/tickets/{id}/priority", ticket.getId()).with(authentication(actor)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON).content("{\"priority\":\"" + priority + "\",\"version\":" + version + "}"));
     }
 
     private Ticket persistedTicket(User customer) {

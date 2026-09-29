@@ -72,6 +72,10 @@ public class TicketHistory {
                 newAgentId == null ? null : newAgentId.toString());
     }
 
+    public static TicketHistory priorityChanged(Ticket ticket, User actor, String oldValue, String newValue) {
+        return changed(ticket, actor, TicketEventType.PRIORITY_CHANGED, "priority", oldValue, newValue);
+    }
+
     private static TicketHistory changed(
             Ticket ticket, User actor, TicketEventType eventType, String fieldName, String oldValue, String newValue
     ) {

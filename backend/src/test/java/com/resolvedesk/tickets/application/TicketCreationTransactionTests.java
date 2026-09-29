@@ -3,7 +3,9 @@ package com.resolvedesk.tickets.application;
 import com.resolvedesk.tickets.api.CreateTicketRequest;
 import com.resolvedesk.tickets.api.ChangeTicketStatusRequest;
 import com.resolvedesk.tickets.api.ChangeTicketAssigneeRequest;
+import com.resolvedesk.tickets.api.ChangeTicketPriorityRequest;
 import com.resolvedesk.tickets.domain.Ticket;
+import com.resolvedesk.tickets.domain.TicketPriority;
 import com.resolvedesk.tickets.history.persistence.TicketHistoryRepository;
 import com.resolvedesk.tickets.persistence.TicketRepository;
 import com.resolvedesk.users.domain.User;
@@ -75,5 +77,19 @@ class TicketCreationTransactionTests {
                 .isInstanceOf(IllegalStateException.class);
 
         assertThat(ticketRepository.findById(ticket.getId()).orElseThrow().getAssignedAgent()).isNull();
+    }
+
+    @Test
+    void rollsBackPriorityChangeWhenTheRequiredHistoryWriteFails() {
+        User customer = userRepository.saveAndFlush(User.create("customer@example.com", "hash", "Test", "Customer", UserRole.CUSTOMER));
+        User agent = userRepository.saveAndFlush(User.create("agent@example.com", "hash", "Test", "Agent", UserRole.AGENT));
+        Ticket ticket = ticketRepository.saveAndFlush(Ticket.create(customer, "A valid title", "A valid ticket description."));
+        willThrow(new IllegalStateException("History persistence failed")).given(ticketHistoryRepository).save(any());
+
+        assertThatThrownBy(() -> ticketWorkflowService.changePriority(agent, ticket.getId(),
+                new ChangeTicketPriorityRequest(TicketPriority.HIGH, 0L)))
+                .isInstanceOf(IllegalStateException.class);
+
+        assertThat(ticketRepository.findById(ticket.getId()).orElseThrow().getPriority()).isEqualTo(TicketPriority.MEDIUM);
     }
 }

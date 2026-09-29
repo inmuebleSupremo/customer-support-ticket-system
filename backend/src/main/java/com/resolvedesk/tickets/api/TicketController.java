@@ -101,4 +101,13 @@ public class TicketController {
     ) {
         return ticketWorkflowService.changeStatus(authenticatedUser.user(), id, request);
     }
+
+    @PatchMapping("/{id}/priority")
+    public TicketPriorityMutationResponse changePriority(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser,
+            @PathVariable long id,
+            @Valid @RequestBody ChangeTicketPriorityRequest request
+    ) {
+        return ticketWorkflowService.changePriority(authenticatedUser.user(), id, request);
+    }
 }
