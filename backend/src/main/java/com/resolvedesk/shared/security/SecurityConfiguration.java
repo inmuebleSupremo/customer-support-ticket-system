@@ -70,6 +70,8 @@ public class SecurityConfiguration {
                         .requestMatchers("/api/v1/auth/register", "/api/v1/auth/login", "/api/v1/auth/csrf", "/api-docs/**", "/swagger-ui/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/tickets").hasRole("CUSTOMER")
                         .requestMatchers(HttpMethod.GET, "/api/v1/tickets", "/api/v1/tickets/*", "/api/v1/tickets/*/history").hasAnyRole("CUSTOMER", "AGENT", "ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/tickets/*/comments").hasAnyRole("CUSTOMER", "AGENT", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/v1/tickets/*/comments").hasAnyRole("CUSTOMER", "AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/v1/agents").hasAnyRole("AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/assignee").hasAnyRole("AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/status").hasAnyRole("CUSTOMER", "AGENT", "ADMIN")

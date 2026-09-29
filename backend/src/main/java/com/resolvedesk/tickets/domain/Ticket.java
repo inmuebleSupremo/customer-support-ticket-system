@@ -96,6 +96,10 @@ public class Ticket {
         }
     }
 
+    public void touch() {
+        updatedAt = Instant.now();
+    }
+
     @PrePersist
     void onCreate() {
         Instant now = Instant.now();

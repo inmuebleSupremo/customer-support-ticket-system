@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { type FormEvent, useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { ApiError } from '../../api/client'
-import { changeTicketAssignee, changeTicketStatus, getAgents, getTicket, getTicketHistory, type AgentSummary, type TicketDetail, type TicketHistoryEntry } from '../../api/tickets'
+import { changeTicketAssignee, changeTicketStatus, createTicketComment, getAgents, getTicket, getTicketComments, getTicketHistory, type AgentSummary, type PageResponse, type TicketComment, type TicketDetail, type TicketHistoryEntry } from '../../api/tickets'
 import { useAuth } from '../auth/AuthContext'
 
 function displayEvent(eventType: TicketHistoryEntry['eventType']) {
@@ -17,6 +17,10 @@ export function TicketDetailPage() {
   const [agents, setAgents] = useState<AgentSummary[]>([])
   const [selectedAgentId, setSelectedAgentId] = useState('')
   const [mutationError, setMutationError] = useState<string | null>(null)
+  const [comments, setComments] = useState<PageResponse<TicketComment> | null>(null)
+  const [commentsError, setCommentsError] = useState<string | null>(null)
+  const [commentContent, setCommentContent] = useState('')
+  const [commentValidationError, setCommentValidationError] = useState<string | null>(null)
 
   const loadTicket = useCallback(async () => {
     if (!ticketId) return
@@ -32,6 +36,18 @@ export function TicketDetailPage() {
   }, [ticketId])
 
   useEffect(() => { void loadTicket() }, [loadTicket])
+
+  const loadComments = useCallback(async () => {
+    if (!ticketId) return
+    try {
+      setComments(await getTicketComments(ticketId))
+      setCommentsError(null)
+    } catch (requestError) {
+      setCommentsError(requestError instanceof ApiError ? requestError.message : 'Unable to load the conversation.')
+    }
+  }, [ticketId])
+
+  useEffect(() => { void loadComments() }, [loadComments])
 
   useEffect(() => {
     if (user?.role === 'AGENT' || user?.role === 'ADMIN') {
@@ -71,6 +87,29 @@ export function TicketDetailPage() {
     }
   }
 
+  async function handleCommentSubmission(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!ticket) return
+    const trimmedContent = commentContent.trim()
+    if (!trimmedContent) {
+      setCommentValidationError('Comment content is required.')
+      return
+    }
+    if (trimmedContent.length > 3000) {
+      setCommentValidationError('Comment content must not exceed 3000 characters.')
+      return
+    }
+    setCommentValidationError(null)
+    setCommentsError(null)
+    try {
+      await createTicketComment(ticket.id, trimmedContent)
+      setCommentContent('')
+      await Promise.all([loadTicket(), loadComments()])
+    } catch (requestError) {
+      setCommentsError(requestError instanceof ApiError ? requestError.message : 'Unable to add this comment.')
+    }
+  }
+
   const backTo = user?.role === 'CUSTOMER' ? '/tickets' : '/queue'
   const backLabel = user?.role === 'CUSTOMER' ? 'Back to your tickets' : 'Back to support queue'
   if (error) return <section aria-labelledby="ticket-detail-title"><h1 id="ticket-detail-title" className="text-3xl font-bold">Ticket unavailable</h1><p role="alert" className="mt-4 rounded bg-red-50 p-3 text-red-800">{error}</p><Link className="mt-4 inline-block text-sky-700 underline" to={backTo}>{backLabel}</Link></section>
@@ -85,6 +124,7 @@ export function TicketDetailPage() {
       <div className="rounded border border-slate-200 bg-white p-6 shadow-sm"><p className="text-sm font-medium uppercase tracking-wide text-sky-700">{ticket.reference}</p><h1 id="ticket-detail-title" className="mt-2 text-3xl font-bold">{ticket.title}</h1><dl className="mt-5 grid gap-3 sm:grid-cols-2"><div><dt className="text-sm text-slate-500">Status</dt><dd className="font-medium">{ticket.status}</dd></div><div><dt className="text-sm text-slate-500">Priority</dt><dd className="font-medium">{ticket.priority}</dd></div><div><dt className="text-sm text-slate-500">Created</dt><dd>{new Date(ticket.createdAt).toLocaleString()}</dd></div><div><dt className="text-sm text-slate-500">Last updated</dt><dd>{new Date(ticket.updatedAt).toLocaleString()}</dd></div></dl><div className="mt-6 border-t pt-5"><h2 className="text-lg font-semibold">Description</h2><p className="mt-2 whitespace-pre-wrap text-slate-700">{ticket.description}</p></div></div>
       {mutationError && <p role="alert" className="rounded bg-red-50 p-3 text-red-800">{mutationError}</p>}
       {ticket.status !== 'CLOSED' && (isStaff || permittedStatuses.length > 0) && <section className="rounded border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="ticket-actions-title"><h2 id="ticket-actions-title" className="text-xl font-bold">Ticket actions</h2>{isStaff && <div className="mt-4"><label className="block text-sm font-medium" htmlFor="ticket-assignee">Assigned agent<select id="ticket-assignee" className="mt-1 block w-full rounded border p-2" value={selectedAgentId} onChange={event => setSelectedAgentId(event.target.value)}><option value="">Unassigned</option>{agents.map(agent => <option key={agent.id} value={agent.id}>{agent.displayName}</option>)}</select></label><div className="mt-3 flex flex-wrap gap-2"><button className="rounded bg-sky-700 px-4 py-2 font-medium text-white" type="button" onClick={() => void handleAssignment()}>Update assignment</button>{user?.role === 'AGENT' && <button className="rounded border px-4 py-2 font-medium" type="button" onClick={() => { setSelectedAgentId(user.id.toString()); void handleAssignment(user.id) }}>Assign to me</button>}</div></div>}<div className="mt-5"><h3 className="font-semibold">Change status</h3><div className="mt-2 flex flex-wrap gap-2">{permittedStatuses.map(status => <button key={status} className="rounded border px-4 py-2 font-medium" type="button" onClick={() => void handleStatus(status)}>Change status to {status.replace('_', ' ')}</button>)}</div></div></section>}
+      <section className="rounded border border-slate-200 bg-white p-6 shadow-sm" aria-labelledby="conversation-title"><h2 id="conversation-title" className="text-2xl font-bold">Conversation</h2>{commentsError && <p role="alert" className="mt-3 rounded bg-red-50 p-3 text-red-800">{commentsError}</p>}{comments === null && !commentsError && <p role="status" className="mt-3">Loading conversation…</p>}{comments && (comments.content.length === 0 ? <p className="mt-3 text-slate-600">No comments have been added yet.</p> : <ol className="mt-4 space-y-3">{comments.content.map(comment => <li key={comment.id} className="rounded border border-slate-200 p-4"><p className="font-medium">{comment.author.displayName} <span className="text-sm font-normal text-slate-500">({comment.author.role})</span></p><p className="mt-1 whitespace-pre-wrap text-slate-700">{comment.content}</p><p className="mt-2 text-sm text-slate-500">{new Date(comment.createdAt).toLocaleString()}</p></li>)}</ol>)}{ticket.status !== 'CLOSED' && <form className="mt-6 border-t pt-5" onSubmit={handleCommentSubmission}><label className="block text-sm font-medium" htmlFor="comment-content">Add a comment<textarea id="comment-content" className="mt-1 block w-full rounded border p-2" value={commentContent} onChange={event => setCommentContent(event.target.value)} maxLength={3000} rows={4} /></label>{commentValidationError && <p role="alert" className="mt-2 text-sm text-red-700">{commentValidationError}</p>}<button className="mt-3 rounded bg-sky-700 px-4 py-2 font-medium text-white" type="submit">Add comment</button></form>}</section>
       <div><h2 className="text-2xl font-bold">Activity</h2>{history.length === 0 ? <p className="mt-3 text-slate-600">No activity has been recorded yet.</p> : <ol className="mt-4 space-y-3">{history.map(entry => <li key={entry.id} className="rounded border border-slate-200 bg-white p-4"><p className="font-medium">{displayEvent(entry.eventType)}</p><p className="mt-1 text-sm text-slate-600">By {entry.actor.displayName} · {new Date(entry.createdAt).toLocaleString()}</p></li>)}</ol>}</div>
     </section>
   )

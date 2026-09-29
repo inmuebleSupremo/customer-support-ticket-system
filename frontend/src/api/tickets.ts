@@ -55,6 +55,13 @@ export interface TicketHistoryEntry {
   createdAt: string
 }
 
+export interface TicketComment {
+  id: number
+  author: TicketUserSummary & { role: 'CUSTOMER' | 'AGENT' | 'ADMIN' }
+  content: string
+  createdAt: string
+}
+
 export interface PageResponse<T> {
   content: T[]
   page: number
@@ -100,6 +107,14 @@ export function getTicket(id: string): Promise<TicketDetail> {
 
 export function getTicketHistory(id: string): Promise<TicketHistoryEntry[]> {
   return apiRequest(`/tickets/${id}/history`)
+}
+
+export function getTicketComments(id: string, page = 0, size = 50): Promise<PageResponse<TicketComment>> {
+  return apiRequest(`/tickets/${id}/comments?page=${page}&size=${size}`)
+}
+
+export function createTicketComment(id: number, content: string): Promise<TicketComment> {
+  return apiRequest(`/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }, true)
 }
 
 export function getAgents(): Promise<AgentSummary[]> {

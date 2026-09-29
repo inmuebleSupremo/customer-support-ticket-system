@@ -4,4 +4,8 @@ public class TicketClosedException extends RuntimeException {
     public TicketClosedException() {
         super("This ticket is closed and cannot be changed.");
     }
+
+    public TicketClosedException(String message) {
+        super(message);
+    }
 }

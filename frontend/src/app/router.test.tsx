@@ -7,6 +7,7 @@ const authenticatedUser = { id: 17, firstName: 'Alex', lastName: 'Morgan', email
 const agentUser = { id: 8, firstName: 'Maria', lastName: 'Garcia', email: 'maria@example.com', role: 'AGENT' as const, active: true, createdAt: '2026-09-29T10:00:00Z' }
 const ticket = { id: 42, reference: 'SUP-42', title: 'Cannot sign in', description: 'I cannot sign in to my ResolveDesk account.', status: 'OPEN' as const, priority: 'MEDIUM' as const, customer: { id: 17, displayName: 'Alex Morgan' }, assignedAgent: null, createdAt: '2026-09-29T10:00:00Z', updatedAt: '2026-09-29T10:00:00Z', resolvedAt: null, closedAt: null, version: 0 }
 const createdHistory = [{ id: 700, eventType: 'TICKET_CREATED' as const, fieldName: null, oldValue: null, newValue: null, oldDisplayValue: null, newDisplayValue: null, actor: { id: 17, displayName: 'Alex Morgan' }, createdAt: '2026-09-29T10:00:00Z' }]
+const emptyComments = { content: [], page: 0, size: 50, totalElements: 0, totalPages: 0, first: true, last: true }
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
@@ -122,6 +123,7 @@ describe('customer ticket creation', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket, 201))
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Create a ticket' })
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Cannot sign in' } })
@@ -189,6 +191,7 @@ describe('customer ticket workspace', () => {
     restoreCustomerSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.getByText('I cannot sign in to my ResolveDesk account.')).toBeInTheDocument()
@@ -274,6 +277,7 @@ describe('agent ticket queue', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...queuePage, page: 1, first: false, last: true }))
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket queue' })
@@ -314,11 +318,13 @@ describe('ticket assignment and lifecycle controls', () => {
     restoreSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
     fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', status: 'IN_PROGRESS', resolvedAt: null, closedAt: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, status: 'IN_PROGRESS', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Ticket actions' })).toBeInTheDocument()
     expect(screen.getByLabelText('Assigned agent')).toBeInTheDocument()
@@ -332,11 +338,13 @@ describe('ticket assignment and lifecycle controls', () => {
     restoreSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
     fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedAgent: { id: 8, displayName: 'Maria Garcia' }, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' }, version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket actions' })
     fireEvent.change(screen.getByLabelText('Assigned agent'), { target: { value: '8' } })
@@ -349,10 +357,12 @@ describe('ticket assignment and lifecycle controls', () => {
     const resolvedTicket = { ...ticket, status: 'RESOLVED' as const, resolvedAt: '2026-09-29T10:00:00Z', version: 2 }
     fetchMock.mockResolvedValueOnce(jsonResponse(resolvedTicket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...resolvedTicket, version: 3 }))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
     expect(await screen.findByRole('button', { name: 'Change status to IN PROGRESS' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Assigned agent')).not.toBeInTheDocument()
@@ -364,9 +374,80 @@ describe('ticket assignment and lifecycle controls', () => {
     restoreSession()
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, status: 'CLOSED' }))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ticket actions' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ticket conversation', () => {
+  const fetchMock = vi.fn()
+  const comments = { content: [{ id: 301, author: { id: 8, displayName: 'Maria Garcia', role: 'AGENT' as const }, content: 'I am investigating this issue.', createdAt: '2026-09-29T10:05:00Z' }], page: 0, size: 50, totalElements: 1, totalPages: 1, first: true, last: true }
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/tickets/42')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreCustomerSession() {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(authenticatedUser))
+  }
+
+  it('renders chronological comments with author roles and an eligible add-comment form', async () => {
+    restoreCustomerSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(comments))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Conversation' })).toBeInTheDocument()
+    expect(screen.getByText('I am investigating this issue.')).toBeInTheDocument()
+    expect(screen.getByText('(AGENT)')).toBeInTheDocument()
+    expect(screen.getByLabelText('Add a comment')).toBeInTheDocument()
+  })
+
+  it('shows the empty state and validates a client comment before submitting', async () => {
+    restoreCustomerSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    render(<AppRouter />)
+    expect(await screen.findByText('No comments have been added yet.')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+    expect(await screen.findByText('Comment content is required.')).toBeInTheDocument()
+  })
+
+  it('submits a comment through the shared CSRF API layer and refreshes ticket activity', async () => {
+    restoreCustomerSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'comment-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(comments.content[0], 201))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, updatedAt: '2026-09-29T10:05:00Z', version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(comments))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Conversation' })
+    fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: 'Please keep me updated.' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/comments', expect.objectContaining({ method: 'POST', body: JSON.stringify({ content: 'Please keep me updated.' }) })))
+    expect(await screen.findByText('I am investigating this issue.')).toBeInTheDocument()
+  })
+
+  it('keeps closed conversations read-only and displays comment API errors', async () => {
+    restoreCustomerSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, status: 'CLOSED' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'Conversation is unavailable.' }, 500))
+    render(<AppRouter />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Conversation is unavailable.')
+    expect(screen.queryByRole('button', { name: 'Add comment' })).not.toBeInTheDocument()
   })
 })
