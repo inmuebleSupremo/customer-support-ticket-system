@@ -81,7 +81,7 @@ public class TeamAdministrationService {
 
     @Transactional
     public TeamDetailResponse changeActive(long teamId, ChangeTeamActiveStateRequest request) {
-        Team team = findTeam(teamId);
+        Team team = teamRepository.findByIdForUpdate(teamId).orElseThrow(() -> new TeamNotFoundException(teamId));
         if (team.isActive() && !request.active()
                 && ticketRepository.existsByAssignedTeamIdAndStatusIn(teamId, NON_CLOSED_TICKET_STATUSES)) {
             throw new TeamHasActiveTicketsException();
@@ -92,8 +92,8 @@ public class TeamAdministrationService {
 
     @Transactional
     public TeamDetailResponse addMember(long teamId, long userId) {
-        Team team = findTeam(teamId);
-        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
+        User user = userRepository.findByIdForUpdate(userId).orElseThrow(() -> new UserNotFoundException(userId));
+        Team team = teamRepository.findByIdForUpdate(teamId).orElseThrow(() -> new TeamNotFoundException(teamId));
         if (user.getRole() != UserRole.AGENT) {
             throw new InvalidTeamMemberException();
         }
@@ -103,8 +103,8 @@ public class TeamAdministrationService {
 
     @Transactional
     public TeamDetailResponse removeMember(long teamId, long userId) {
+        User user = userRepository.findByIdForUpdate(userId).orElseThrow(() -> new UserNotFoundException(userId));
         Team team = teamRepository.findByIdForUpdate(teamId).orElseThrow(() -> new TeamNotFoundException(teamId));
-        User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
         if (ticketRepository.existsByAssignedAgentIdAndAssignedTeamIdAndStatusIn(
                 user.getId(), team.getId(), NON_CLOSED_TICKET_STATUSES
         )) {

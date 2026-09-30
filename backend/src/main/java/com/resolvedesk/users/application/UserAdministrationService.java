@@ -15,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Comparator;
 
 @Service
 public class UserAdministrationService {
@@ -41,7 +42,7 @@ public class UserAdministrationService {
 
     @Transactional
     public UserMutationResponse changeRole(long userId, UserRole requestedRole) {
-        User user = findUser(userId);
+        User user = findUserForUpdate(userId);
         if (user.getRole() == UserRole.AGENT && requestedRole != UserRole.AGENT
                 && hasAssignedTickets(user, NON_CLOSED_TICKET_STATUSES)) {
             throw new AgentHasActiveTicketsException("Reassign or unassign the agent's non-closed tickets before changing the role.");
@@ -50,7 +51,7 @@ public class UserAdministrationService {
             ensureNotLastActiveAdmin();
         }
         if (user.getRole() == UserRole.AGENT && requestedRole != UserRole.AGENT) {
-            teamRepository.findDistinctByMembersId(user.getId()).forEach(team -> team.removeMember(user));
+            memberTeamsForUpdate(user.getId()).forEach(team -> team.removeMember(user));
         }
         user.changeRole(requestedRole);
         return toMutation(user);
@@ -58,7 +59,7 @@ public class UserAdministrationService {
 
     @Transactional
     public UserMutationResponse changeActive(long userId, boolean active) {
-        User user = findUser(userId);
+        User user = findUserForUpdate(userId);
         if (user.isActive() && !active && user.getRole() == UserRole.AGENT
                 && hasAssignedTickets(user, NON_CLOSED_TICKET_STATUSES)) {
             throw new AgentHasActiveTicketsException("Reassign or unassign the agent's non-closed tickets before deactivating the account.");
@@ -70,8 +71,16 @@ public class UserAdministrationService {
         return toMutation(user);
     }
 
-    private User findUser(long id) {
-        return userRepository.findById(id).orElseThrow(() -> new UserNotFoundException(id));
+    private User findUserForUpdate(long id) {
+        return userRepository.findByIdForUpdate(id).orElseThrow(() -> new UserNotFoundException(id));
+    }
+
+    private List<com.resolvedesk.teams.domain.Team> memberTeamsForUpdate(long userId) {
+        List<Long> teamIds = teamRepository.findDistinctByMembersId(userId).stream()
+                .map(com.resolvedesk.teams.domain.Team::getId)
+                .sorted(Comparator.naturalOrder())
+                .toList();
+        return teamIds.isEmpty() ? List.of() : teamRepository.findAllByIdInOrderByIdForUpdate(teamIds);
     }
 
     private boolean hasAssignedTickets(User user, List<TicketStatus> statuses) {

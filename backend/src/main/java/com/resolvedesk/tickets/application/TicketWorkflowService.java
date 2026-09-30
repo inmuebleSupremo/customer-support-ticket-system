@@ -58,7 +58,7 @@ public class TicketWorkflowService {
         requireNotClosed(ticket);
         requireCurrentVersion(ticket, request.version());
 
-        User assignedAgent = request.agentId() == null ? null : userRepository.findById(request.agentId())
+        User assignedAgent = request.agentId() == null ? null : userRepository.findByIdForUpdate(request.agentId())
                 .filter(user -> user.isActive() && user.getRole() == UserRole.AGENT)
                 .orElseThrow(InvalidAssigneeException::new);
         if (assignedAgent != null && ticket.getAssignedTeam() != null) {
@@ -85,6 +85,8 @@ public class TicketWorkflowService {
         requireNotClosed(ticket);
         requireCurrentVersion(ticket, request.version());
 
+        User currentAssignedAgent = ticket.getAssignedAgent() == null ? null
+                : userRepository.findByIdForUpdate(ticket.getAssignedAgent().getId()).orElseThrow(InvalidAssigneeException::new);
         Team requestedTeam = request.teamId() == null ? null : teamRepository.findByIdForUpdate(request.teamId())
                 .orElseThrow(InactiveTeamException::new);
         if (requestedTeam != null && !requestedTeam.isActive()) {
@@ -96,9 +98,10 @@ public class TicketWorkflowService {
             return TicketResponseMapper.toTeamMutation(ticket);
         }
 
-        Long oldAgentId = ticket.getAssignedAgent() == null ? null : ticket.getAssignedAgent().getId();
-        boolean clearAssignee = requestedTeam != null && oldAgentId != null
-                && !teamRepository.existsByIdAndMembersId(requestedTeam.getId(), oldAgentId);
+        Long oldAgentId = currentAssignedAgent == null ? null : currentAssignedAgent.getId();
+        boolean clearAssignee = requestedTeam != null && currentAssignedAgent != null
+                && (!currentAssignedAgent.isActive() || currentAssignedAgent.getRole() != UserRole.AGENT
+                || !teamRepository.existsByIdAndMembersId(requestedTeam.getId(), currentAssignedAgent.getId()));
         if (requestedTeam == null) ticket.clearTeam(); else ticket.assignTeam(requestedTeam);
         if (clearAssignee) ticket.unassign();
         ticketRepository.saveAndFlush(ticket);

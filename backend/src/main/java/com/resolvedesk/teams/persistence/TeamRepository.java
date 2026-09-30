@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import jakarta.persistence.LockModeType;
 
 import java.util.List;
+import java.util.Collection;
 
 public interface TeamRepository extends JpaRepository<Team, Long> {
     boolean existsByName(String name);
@@ -27,4 +28,8 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select team from Team team where team.id = :teamId")
     java.util.Optional<Team> findByIdForUpdate(Long teamId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select team from Team team where team.id in :teamIds order by team.id")
+    List<Team> findAllByIdInOrderByIdForUpdate(Collection<Long> teamIds);
 }
