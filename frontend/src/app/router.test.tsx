@@ -360,7 +360,7 @@ describe('customer ticket workspace', () => {
 
 describe('agent ticket queue', () => {
   const fetchMock = vi.fn()
-  const queuePage = { content: [{ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' } }], page: 0, size: 20, totalElements: 21, totalPages: 2, first: true, last: false }
+  const queuePage = { content: [{ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' }, assignedTeam: { id: 3, name: 'Platform Support' } }], page: 0, size: 20, totalElements: 21, totalPages: 2, first: true, last: false }
   const agents = [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com' }]
 
   beforeEach(() => {
@@ -384,6 +384,8 @@ describe('agent ticket queue', () => {
     expect(await screen.findByRole('heading', { name: 'Ticket queue' })).toBeInTheDocument()
     expect(await screen.findByRole('table')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('Maria Garcia')).toBeInTheDocument()
+    expect(within(screen.getByRole('table')).getByText('Platform Support')).toBeInTheDocument()
+    expect(screen.getByText(/Team: Platform Support/)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
   })
 

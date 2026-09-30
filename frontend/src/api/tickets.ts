@@ -10,6 +10,11 @@ export interface TicketUserSummary {
   displayName: string
 }
 
+export interface TicketTeamSummary {
+  id: number
+  name: string
+}
+
 export interface AgentSummary extends TicketUserSummary {
   email: string
 }
@@ -23,6 +28,7 @@ export interface TicketDetail {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   customer: TicketUserSummary
   assignedAgent: TicketUserSummary | null
+  assignedTeam: TicketTeamSummary | null
   createdAt: string
   updatedAt: string
   resolvedAt: string | null
@@ -38,6 +44,7 @@ export interface TicketSummary {
   priority: TicketDetail['priority']
   customer: TicketUserSummary
   assignedAgent: TicketUserSummary | null
+  assignedTeam: TicketTeamSummary | null
   createdAt: string
   updatedAt: string
   version: number
