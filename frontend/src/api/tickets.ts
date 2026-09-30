@@ -151,6 +151,10 @@ export function changeTeamName(id: number, input: CreateTeamInput): Promise<Tick
   return apiRequest(`/teams/${id}/name`, { method: 'PATCH', body: JSON.stringify(input) }, true)
 }
 
+export function changeTeamActive(id: number, active: boolean): Promise<TicketTeamSummary> {
+  return apiRequest(`/teams/${id}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }, true)
+}
+
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
   return apiRequest(`/tickets/${id}/assignee`, {
     method: 'PATCH',
