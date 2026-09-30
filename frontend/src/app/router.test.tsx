@@ -356,7 +356,7 @@ describe('customer ticket workspace', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.getByText('I cannot sign in to my ResolveDesk account.')).toBeInTheDocument()
-    expect(screen.getByText('Ticket Created')).toBeInTheDocument()
+    expect(screen.getByText('Ticket created')).toBeInTheDocument()
     expect(screen.getByText(/By Alex Morgan/)).toBeInTheDocument()
   })
 
@@ -680,8 +680,8 @@ describe('ticket assignment and lifecycle controls', () => {
     const teamHistory = [{ id: 701, eventType: 'TEAM_CHANGED' as const, fieldName: 'assignedTeam', oldValue: '2', newValue: '3', oldDisplayValue: 'Technical', newDisplayValue: 'Billing', actor: { id: 8, displayName: 'Maria Garcia' }, createdAt: '2026-09-29T10:01:00Z' }]
     mockTicketDetailRequests({ ticketResponses: [routedTicket], historyResponses: [teamHistory], requestResponses: { 'GET /api/v1/agents?teamId=3': reply(agents) } })
     render(<AppRouter />)
-    expect(await screen.findByText('changed the assigned team')).toBeInTheDocument()
-    expect(screen.getByText('Technical → Billing')).toBeInTheDocument()
+    expect(await screen.findByText('Team changed')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Activity' }).parentElement!).getByText('Technical')).toBeInTheDocument()
     expect(screen.getAllByText('Billing')).not.toHaveLength(0)
   })
 
@@ -757,6 +757,7 @@ describe('ticket conversation', () => {
     expect(await screen.findByRole('heading', { name: 'Conversation' })).toBeInTheDocument()
     expect(screen.getByText('I am investigating this issue.')).toBeInTheDocument()
     expect(screen.getByText('Agent')).toBeInTheDocument()
+    expect(screen.getByText('Staff reply')).toBeInTheDocument()
     expect(screen.getByLabelText('Add a comment')).toBeInTheDocument()
   })
 
@@ -766,7 +767,7 @@ describe('ticket conversation', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
-    expect(await screen.findByText('No comments have been added yet.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No conversation yet' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: '   ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
     expect(await screen.findByText('Comment content is required.')).toBeInTheDocument()
