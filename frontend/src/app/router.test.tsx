@@ -407,7 +407,6 @@ describe('agent ticket queue', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('Maria Garcia')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('Platform Support')).toBeInTheDocument()
-    expect(screen.getByText(/Team: Platform Support/)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams', expect.objectContaining({ credentials: 'include' }))
     expect(screen.getByRole('option', { name: 'All teams' })).toBeInTheDocument()
@@ -438,6 +437,12 @@ describe('agent ticket queue', () => {
     fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'title,asc' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&teamId=3&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
+    const appliedFilters = screen.getByRole('region', { name: 'Applied queue filters' })
+    expect(within(appliedFilters).getByText('Status: Open')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Priority: High')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Team: Platform Support')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Assignee: Maria Garcia')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Search: SUP-42')).toBeInTheDocument()
   })
 
   it('submits the unrouted filter without a specific team', async () => {
