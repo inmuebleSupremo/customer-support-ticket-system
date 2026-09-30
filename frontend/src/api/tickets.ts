@@ -5,6 +5,10 @@ export interface CreateTicketInput {
   description: string
 }
 
+export interface CreateTeamInput {
+  name: string
+}
+
 export interface TicketUserSummary {
   id: number
   displayName: string
@@ -137,6 +141,10 @@ export function getAgents(teamId?: number): Promise<AgentSummary[]> {
 
 export function getTeams(includeInactive = false): Promise<TicketTeamSummary[]> {
   return apiRequest(includeInactive ? '/teams?includeInactive=true' : '/teams')
+}
+
+export function createTeam(input: CreateTeamInput): Promise<TicketTeamSummary> {
+  return apiRequest('/teams', { method: 'POST', body: JSON.stringify(input) }, true)
 }
 
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
