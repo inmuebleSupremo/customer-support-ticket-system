@@ -224,7 +224,7 @@ describe('application navigation', () => {
     restoreSession(authenticatedUser)
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
     render(<AppRouter />)
-    await screen.findByRole('heading', { name: 'Your tickets' })
+    await screen.findByRole('heading', { name: 'My tickets' })
     expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('[aria-current="page"]')).toHaveTextContent('My Tickets')
   })
 
@@ -335,8 +335,9 @@ describe('customer ticket workspace', () => {
     restoreCustomerSession()
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [ticket], page: 0, size: 20, totalElements: 1, totalPages: 1, first: true, last: true }))
     render(<AppRouter />)
-    expect(await screen.findByRole('heading', { name: 'Your tickets' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'My tickets' })).toBeInTheDocument()
     expect(await screen.findAllByRole('link', { name: /SUP-42/ })).toHaveLength(2)
+    expect(screen.getByRole('columnheader', { name: 'Last activity' })).toBeInTheDocument()
     expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?page=0&size=20&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' }))
   })
 
@@ -344,7 +345,8 @@ describe('customer ticket workspace', () => {
     restoreCustomerSession()
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
     render(<AppRouter />)
-    expect(await screen.findByText('You have not created any tickets yet.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No tickets yet' })).toBeInTheDocument()
+    expect(screen.getByText(/You have not created any tickets yet/)).toBeInTheDocument()
   })
 
   it('renders ticket details and their activity history', async () => {
