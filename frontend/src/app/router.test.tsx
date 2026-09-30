@@ -1127,6 +1127,64 @@ describe('team administration', () => {
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
+  it('loads a team’s members and adds an eligible agent', async () => {
+    const billingDetail = { id: 3, name: 'Billing', active: true, members: [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com', active: true }], createdAt: '2026-09-30T10:00:00Z', updatedAt: '2026-09-30T10:00:00Z' }
+    const activeAgents = [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com' }, { id: 9, displayName: 'Nadia Agent', email: 'nadia@example.com' }]
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse(billingDetail))
+    fetchMock.mockResolvedValueOnce(jsonResponse(activeAgents))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...billingDetail, members: [...billingDetail.members, { id: 9, displayName: 'Nadia Agent', email: 'nadia@example.com', active: true }] }))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    fireEvent.click(within(table).getByRole('button', { name: 'Manage members Billing' }))
+    expect(await screen.findByText('maria@example.com')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams/3', expect.objectContaining({ credentials: 'include' }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
+    const agentSelect = screen.getByLabelText('Add an agent to Billing')
+    expect(within(agentSelect).queryByRole('option', { name: /Maria Garcia/ })).not.toBeInTheDocument()
+    expect(within(agentSelect).getByRole('option', { name: 'Nadia Agent — nadia@example.com' })).toBeInTheDocument()
+    fireEvent.change(agentSelect, { target: { value: '9' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add to team' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams/3/members/9', expect.objectContaining({ method: 'PUT' })))
+    expect(await screen.findByRole('button', { name: 'Remove Nadia Agent' })).toBeInTheDocument()
+  })
+
+  it('removes a team member and refreshes the displayed membership', async () => {
+    const billingDetail = { id: 3, name: 'Billing', active: true, members: [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com', active: true }, { id: 9, displayName: 'Nadia Agent', email: 'nadia@example.com', active: true }], createdAt: '2026-09-30T10:00:00Z', updatedAt: '2026-09-30T10:00:00Z' }
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse(billingDetail))
+    fetchMock.mockResolvedValueOnce(jsonResponse([]))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...billingDetail, members: [billingDetail.members[1]] }))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    fireEvent.click(within(table).getByRole('button', { name: 'Manage members Billing' }))
+    expect(await screen.findByRole('button', { name: 'Remove Maria Garcia' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Remove Maria Garcia' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams/3/members/8', expect.objectContaining({ method: 'DELETE' })))
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Remove Maria Garcia' })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Remove Nadia Agent' })).toBeInTheDocument()
+  })
+
+  it('shows the non-closed ticket blocker when removing a team member is refused', async () => {
+    const billingDetail = { id: 3, name: 'Billing', active: true, members: [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com', active: true }], createdAt: '2026-09-30T10:00:00Z', updatedAt: '2026-09-30T10:00:00Z' }
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse(billingDetail))
+    fetchMock.mockResolvedValueOnce(jsonResponse([]))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'TEAM_MEMBER_HAS_ACTIVE_TICKETS', detail: "Reassign, unassign, or route the member's non-closed team tickets before removing membership." }, 409))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    fireEvent.click(within(table).getByRole('button', { name: 'Manage members Billing' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove Maria Garcia' }))
+    expect(await screen.findByText("Reassign, unassign, or route the member's non-closed team tickets before removing membership.")).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Remove Maria Garcia' })).toBeInTheDocument()
+  })
+
   it('displays backend creation errors using the form feedback pattern', async () => {
     restoreAdminSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(teams))

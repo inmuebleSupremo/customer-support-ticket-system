@@ -20,6 +20,19 @@ export interface TicketTeamSummary {
   active: boolean
 }
 
+export interface TeamMember {
+  id: number
+  displayName: string
+  email: string
+  active: boolean
+}
+
+export interface TeamAdministrationDetail extends TicketTeamSummary {
+  members: TeamMember[]
+  createdAt: string
+  updatedAt: string
+}
+
 export interface AgentSummary extends TicketUserSummary {
   email: string
 }
@@ -143,6 +156,10 @@ export function getTeams(includeInactive = false): Promise<TicketTeamSummary[]> 
   return apiRequest(includeInactive ? '/teams?includeInactive=true' : '/teams')
 }
 
+export function getTeam(id: number): Promise<TeamAdministrationDetail> {
+  return apiRequest(`/teams/${id}`)
+}
+
 export function createTeam(input: CreateTeamInput): Promise<TicketTeamSummary> {
   return apiRequest('/teams', { method: 'POST', body: JSON.stringify(input) }, true)
 }
@@ -153,6 +170,14 @@ export function changeTeamName(id: number, input: CreateTeamInput): Promise<Tick
 
 export function changeTeamActive(id: number, active: boolean): Promise<TicketTeamSummary> {
   return apiRequest(`/teams/${id}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }, true)
+}
+
+export function addTeamMember(teamId: number, agentId: number): Promise<TeamAdministrationDetail> {
+  return apiRequest(`/teams/${teamId}/members/${agentId}`, { method: 'PUT' }, true)
+}
+
+export function removeTeamMember(teamId: number, agentId: number): Promise<TeamAdministrationDetail> {
+  return apiRequest(`/teams/${teamId}/members/${agentId}`, { method: 'DELETE' }, true)
 }
 
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
