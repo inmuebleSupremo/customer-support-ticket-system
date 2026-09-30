@@ -436,6 +436,25 @@ describe('agent ticket queue', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?unassignedTeam=true&page=0&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
   })
 
+  it('submits My Teams without a specific or unrouted team filter', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Ticket queue' })
+    fireEvent.change(screen.getByLabelText('Team'), { target: { value: '3' } })
+    fireEvent.click(screen.getByLabelText('My Teams'))
+    expect(screen.getByLabelText('Team')).toBeDisabled()
+    expect(screen.getByLabelText('Team')).toHaveValue('')
+    expect(screen.getByLabelText('Unrouted / No team')).not.toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?myTeams=true&page=0&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
+    fireEvent.click(screen.getByLabelText('Unrouted / No team'))
+    expect(screen.getByLabelText('My Teams')).not.toBeChecked()
+  })
+
   it('clears active filters and reloads the default queue', async () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
