@@ -130,8 +130,8 @@ export function createTicketComment(id: number, content: string): Promise<Ticket
   return apiRequest(`/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }, true)
 }
 
-export function getAgents(): Promise<AgentSummary[]> {
-  return apiRequest('/agents')
+export function getAgents(teamId?: number): Promise<AgentSummary[]> {
+  return apiRequest(teamId === undefined ? '/agents' : `/agents?teamId=${teamId}`)
 }
 
 export function getTeams(): Promise<TicketTeamSummary[]> {
