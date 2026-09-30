@@ -84,6 +84,7 @@ export interface TicketListQuery {
   priority?: TicketDetail['priority']
   assignedAgentId?: string
   teamId?: string
+  unassignedTeam?: boolean
   unassigned?: boolean
   search?: string
   page?: number
@@ -101,6 +102,7 @@ export function listTickets(query: TicketListQuery = {}): Promise<PageResponse<T
   if (query.priority) params.set('priority', query.priority)
   if (query.assignedAgentId) params.set('assignedAgentId', query.assignedAgentId)
   if (query.teamId) params.set('teamId', query.teamId)
+  if (query.unassignedTeam) params.set('unassignedTeam', 'true')
   if (query.unassigned) params.set('unassigned', 'true')
   if (query.search) params.set('search', query.search)
   if (query.page !== undefined) params.set('page', String(query.page))

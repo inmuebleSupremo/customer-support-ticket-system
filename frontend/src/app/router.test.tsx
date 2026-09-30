@@ -420,6 +420,22 @@ describe('agent ticket queue', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&teamId=3&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
   })
 
+  it('submits the unrouted filter without a specific team', async () => {
+    restoreAgentSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Ticket queue' })
+    fireEvent.change(screen.getByLabelText('Team'), { target: { value: '3' } })
+    fireEvent.click(screen.getByLabelText('Unrouted / No team'))
+    expect(screen.getByLabelText('Team')).toBeDisabled()
+    expect(screen.getByLabelText('Team')).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?unassignedTeam=true&page=0&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
+  })
+
   it('clears active filters and reloads the default queue', async () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
