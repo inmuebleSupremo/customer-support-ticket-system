@@ -1049,6 +1049,8 @@ describe('team administration', () => {
     expect(within(table).getByText('Legacy Support')).toBeInTheDocument()
     expect(within(table).getByText('Active')).toBeInTheDocument()
     expect(within(table).getByText('Inactive')).toBeInTheDocument()
+    expect(within(table).getByText('Available for new ticket routing.')).toBeInTheDocument()
+    expect(within(table).getByText('Inactive and unavailable for new routing.')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams?includeInactive=true', expect.objectContaining({ credentials: 'include' }))
     expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('[aria-current="page"]')).toHaveTextContent('Team Administration')
   })
