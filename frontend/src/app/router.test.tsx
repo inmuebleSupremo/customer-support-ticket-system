@@ -240,6 +240,29 @@ describe('application navigation', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Navigation menu' })).not.toBeInTheDocument())
     expect(menuButton).toHaveFocus()
   })
+
+  it('traps focus and locks page scrolling while the mobile drawer is open', async () => {
+    restoreSession(authenticatedUser)
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Welcome, Alex.' })
+    const menuButton = screen.getByRole('button', { name: 'Open navigation menu' })
+    fireEvent.click(menuButton)
+    const drawer = screen.getByRole('dialog', { name: 'Navigation menu' })
+    const firstControl = within(drawer).getByRole('link', { name: 'ResolveDesk' })
+    const lastControl = within(drawer).getByRole('button', { name: 'Log out Alex' })
+
+    expect(document.body.style.overflow).toBe('hidden')
+    lastControl.focus()
+    fireEvent.keyDown(lastControl, { key: 'Tab' })
+    expect(firstControl).toHaveFocus()
+    fireEvent.keyDown(firstControl, { key: 'Tab', shiftKey: true })
+    expect(lastControl).toHaveFocus()
+
+    fireEvent.keyDown(drawer, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Navigation menu' })).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe('')
+    expect(menuButton).toHaveFocus()
+  })
 })
 
 describe('customer ticket creation', () => {
@@ -986,6 +1009,32 @@ describe('user administration', () => {
     expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/users/8/active', expect.anything())
   })
 
+  it('traps focus, supports Escape, and restores scrolling for account deactivation confirmation', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(managedUsers))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    const deactivateButton = within(table).getAllByRole('button', { name: 'Deactivate' })[1]
+    deactivateButton.focus()
+    fireEvent.click(deactivateButton)
+    const dialog = await screen.findByRole('alertdialog', { name: 'Deactivate Maria Garcia?' })
+    const cancelButton = within(dialog).getByRole('button', { name: 'Cancel' })
+    const confirmButton = within(dialog).getByRole('button', { name: 'Deactivate account' })
+
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(cancelButton).toHaveFocus()
+    confirmButton.focus()
+    fireEvent.keyDown(confirmButton, { key: 'Tab' })
+    expect(cancelButton).toHaveFocus()
+    fireEvent.keyDown(cancelButton, { key: 'Tab', shiftKey: true })
+    expect(confirmButton).toHaveFocus()
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe('')
+    await waitFor(() => expect(deactivateButton).toHaveFocus())
+  })
+
   it('displays final-administrator and assigned-agent business conflicts', async () => {
     restoreAdminSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(managedUsers))
@@ -1127,6 +1176,30 @@ describe('team administration', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate team' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams/3/active', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ active: false }) })))
     expect(await within(screen.getByRole('table')).findByRole('button', { name: 'Reactivate Billing' })).toBeInTheDocument()
+  })
+
+  it('traps focus, supports Escape, and restores scrolling for team deactivation confirmation', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    const deactivateButton = within(table).getByRole('button', { name: 'Deactivate Billing' })
+    deactivateButton.focus()
+    fireEvent.click(deactivateButton)
+    const dialog = await screen.findByRole('alertdialog', { name: 'Deactivate Billing?' })
+    const cancelButton = within(dialog).getByRole('button', { name: 'Cancel' })
+    const confirmButton = within(dialog).getByRole('button', { name: 'Deactivate team' })
+
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(cancelButton).toHaveFocus()
+    confirmButton.focus()
+    fireEvent.keyDown(confirmButton, { key: 'Tab' })
+    expect(cancelButton).toHaveFocus()
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe('')
+    await waitFor(() => expect(deactivateButton).toHaveFocus())
   })
 
   it('reactivates an inactive team and refreshes the team list', async () => {

@@ -8,6 +8,7 @@ import { Alert, EmptyState, LoadingState } from '../../components/ui/Feedback'
 import { PageHeader } from '../../components/ui/PageHeader'
 import { Pagination } from '../../components/ui/Pagination'
 import { Panel } from '../../components/ui/Panel'
+import { trapFocusWithin, useScrollLock } from '../../components/ui/overlay'
 
 const emptyFilters = { role: '', active: '', search: '', sort: 'createdAt,desc' }
 
@@ -36,7 +37,10 @@ export function UserAdministrationPage() {
   const [updatingUserId, setUpdatingUserId] = useState<number | null>(null)
   const [confirmingUser, setConfirmingUser] = useState<ManagedUser | null>(null)
   const cancelConfirmationRef = useRef<HTMLButtonElement>(null)
+  const confirmationDialogRef = useRef<HTMLElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
+
+  useScrollLock(confirmingUser !== null)
 
   useEffect(() => {
     setResult(null)
@@ -113,7 +117,7 @@ export function UserAdministrationPage() {
     {result === null && !loadError && <LoadingState label="Loading users…" />}
     {result && (result.content.length === 0 ? <EmptyState title="No matching users">No users match the current filters.</EmptyState> : <UserResults users={result.content} roleChanges={roleChanges} mutationErrors={mutationErrors} updatingUserId={updatingUserId} onRoleChange={(id, role) => setRoleChanges(current => ({ ...current, [id]: role }))} onRoleUpdate={updateRole} onActiveUpdate={user => user.active ? openDeactivationConfirmation(user) : void updateActive(user)} />)}
     {result && <Pagination first={result.first} last={result.last} page={result.page} totalPages={result.totalPages} onPageChange={page => setQuery(current => ({ ...current, page }))} />}
-    {confirmingUser && <DeactivationConfirmation user={confirmingUser} cancelRef={cancelConfirmationRef} onCancel={closeConfirmation} onConfirm={() => void updateActive(confirmingUser)} updating={updatingUserId === confirmingUser.id} />}
+    {confirmingUser && <DeactivationConfirmation user={confirmingUser} cancelRef={cancelConfirmationRef} dialogRef={confirmationDialogRef} onCancel={closeConfirmation} onConfirm={() => void updateActive(confirmingUser)} updating={updatingUserId === confirmingUser.id} />}
   </section>
 }
 
@@ -130,6 +134,6 @@ function UserActions({ error, nextRole, onActiveUpdate, onRoleChange, onRoleUpda
   return <div className="mt-4 divide-y divide-slate-200 border-y border-slate-200 lg:mt-0"><section className="py-4 first:pt-0"><p className="rd-meta-label">Role and responsibility</p><div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end"><div className="min-w-0 flex-1"><label className="rd-label" htmlFor={`user-role-${user.id}`}>Role for {user.email}</label><select id={`user-role-${user.id}`} className="rd-select" value={nextRole} disabled={updating} onChange={event => onRoleChange(event.target.value as ManagedUserRole)}><option value="CUSTOMER">Customer</option><option value="AGENT">Agent</option><option value="ADMIN">Administrator</option></select></div><Button className="w-full sm:w-auto" variant="secondary" disabled={updating || nextRole === user.role} onClick={onRoleUpdate}>Update role</Button></div></section><section className="py-4 last:pb-0"><p className="rd-meta-label">Account access</p><div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"><p className="text-sm leading-5 text-slate-600">{user.active ? 'Access is currently enabled.' : 'Access is currently disabled.'}</p><Button className="w-full sm:w-auto" variant="quiet" disabled={updating} onClick={onActiveUpdate}>{user.active ? 'Deactivate' : 'Activate'}</Button></div></section>{error && <section className="py-4 last:pb-0" aria-label="Account action feedback"><p className="rd-meta-label">Action needs attention</p><div className="mt-1"><Alert tone="danger">{error}</Alert></div></section>}</div>
 }
 
-function DeactivationConfirmation({ cancelRef, onCancel, onConfirm, updating, user }: { cancelRef: RefObject<HTMLButtonElement | null>; onCancel: () => void; onConfirm: () => void; updating: boolean; user: ManagedUser }) {
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation"><section role="alertdialog" aria-modal="true" aria-labelledby="deactivate-user-title" aria-describedby="deactivate-user-description" className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-lg sm:p-6"><p className="rd-meta-label">Account access</p><h2 id="deactivate-user-title" className="mt-1 text-lg font-semibold text-slate-950">Deactivate {user.firstName} {user.lastName}?</h2><p id="deactivate-user-description" className="mt-2 text-sm leading-6 text-slate-600">This disables their ResolveDesk access. Existing server safeguards, including final-administrator protection, still apply.</p><div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button ref={cancelRef} variant="secondary" disabled={updating} onClick={onCancel}>Cancel</Button><Button variant="danger" disabled={updating} onClick={onConfirm}>{updating ? 'Deactivating…' : 'Deactivate account'}</Button></div></section></div>
+function DeactivationConfirmation({ cancelRef, dialogRef, onCancel, onConfirm, updating, user }: { cancelRef: RefObject<HTMLButtonElement | null>; dialogRef: RefObject<HTMLElement | null>; onCancel: () => void; onConfirm: () => void; updating: boolean; user: ManagedUser }) {
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="presentation"><section ref={dialogRef} role="alertdialog" aria-modal="true" aria-labelledby="deactivate-user-title" aria-describedby="deactivate-user-description" tabIndex={-1} onKeyDown={event => trapFocusWithin(event, dialogRef.current)} className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-5 shadow-lg sm:p-6"><p className="rd-meta-label">Account access</p><h2 id="deactivate-user-title" className="mt-1 text-lg font-semibold text-slate-950">Deactivate {user.firstName} {user.lastName}?</h2><p id="deactivate-user-description" className="mt-2 text-sm leading-6 text-slate-600">This disables their ResolveDesk access. Existing server safeguards, including final-administrator protection, still apply.</p><div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end"><Button ref={cancelRef} variant="secondary" disabled={updating} onClick={onCancel}>Cancel</Button><Button variant="danger" disabled={updating} onClick={onConfirm}>{updating ? 'Deactivating…' : 'Deactivate account'}</Button></div></section></div>
 }
