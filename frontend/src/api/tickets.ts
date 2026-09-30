@@ -83,6 +83,7 @@ export interface TicketListQuery {
   status?: TicketDetail['status']
   priority?: TicketDetail['priority']
   assignedAgentId?: string
+  teamId?: string
   unassigned?: boolean
   search?: string
   page?: number
@@ -99,6 +100,7 @@ export function listTickets(query: TicketListQuery = {}): Promise<PageResponse<T
   if (query.status) params.set('status', query.status)
   if (query.priority) params.set('priority', query.priority)
   if (query.assignedAgentId) params.set('assignedAgentId', query.assignedAgentId)
+  if (query.teamId) params.set('teamId', query.teamId)
   if (query.unassigned) params.set('unassigned', 'true')
   if (query.search) params.set('search', query.search)
   if (query.page !== undefined) params.set('page', String(query.page))
@@ -126,6 +128,10 @@ export function createTicketComment(id: number, content: string): Promise<Ticket
 
 export function getAgents(): Promise<AgentSummary[]> {
   return apiRequest('/agents')
+}
+
+export function getTeams(): Promise<TicketTeamSummary[]> {
+  return apiRequest('/teams')
 }
 
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {

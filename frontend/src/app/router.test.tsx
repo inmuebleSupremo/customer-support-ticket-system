@@ -362,6 +362,7 @@ describe('agent ticket queue', () => {
   const fetchMock = vi.fn()
   const queuePage = { content: [{ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' }, assignedTeam: { id: 3, name: 'Platform Support' } }], page: 0, size: 20, totalElements: 21, totalPages: 2, first: true, last: false }
   const agents = [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com' }]
+  const teams = [{ id: 3, name: 'Platform Support' }]
 
   beforeEach(() => {
     window.history.replaceState({}, '', '/queue')
@@ -380,6 +381,7 @@ describe('agent ticket queue', () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Ticket queue' })).toBeInTheDocument()
     expect(await screen.findByRole('table')).toBeInTheDocument()
@@ -387,12 +389,15 @@ describe('agent ticket queue', () => {
     expect(within(screen.getByRole('table')).getByText('Platform Support')).toBeInTheDocument()
     expect(screen.getByText(/Team: Platform Support/)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams', expect.objectContaining({ credentials: 'include' }))
+    expect(screen.getByRole('option', { name: 'All teams' })).toBeInTheDocument()
   })
 
   it('renders the empty queue state', async () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'No matching tickets' })).toBeInTheDocument()
   })
@@ -401,22 +406,25 @@ describe('agent ticket queue', () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket queue' })
     fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'OPEN' } })
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'HIGH' } })
+    fireEvent.change(screen.getByLabelText('Team'), { target: { value: '3' } })
     fireEvent.change(screen.getByLabelText('Assigned agent'), { target: { value: '8' } })
     fireEvent.change(screen.getByLabelText('Search tickets'), { target: { value: 'SUP-42' } })
     fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'title,asc' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
-    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
+    await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&teamId=3&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
   })
 
   it('clears active filters and reloads the default queue', async () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket queue' })
@@ -431,6 +439,7 @@ describe('agent ticket queue', () => {
     restoreAgentSession()
     fetchMock.mockResolvedValueOnce(jsonResponse(queuePage))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...queuePage, page: 1, first: false, last: true }))
     fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
