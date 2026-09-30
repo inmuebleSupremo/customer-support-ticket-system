@@ -147,6 +147,10 @@ export function createTeam(input: CreateTeamInput): Promise<TicketTeamSummary> {
   return apiRequest('/teams', { method: 'POST', body: JSON.stringify(input) }, true)
 }
 
+export function changeTeamName(id: number, input: CreateTeamInput): Promise<TicketTeamSummary> {
+  return apiRequest(`/teams/${id}/name`, { method: 'PATCH', body: JSON.stringify(input) }, true)
+}
+
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
   return apiRequest(`/tickets/${id}/assignee`, {
     method: 'PATCH',
