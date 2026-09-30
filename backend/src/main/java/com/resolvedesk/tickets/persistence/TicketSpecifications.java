@@ -29,6 +29,11 @@ public final class TicketSpecifications {
             if (query.unassigned()) predicates.add(criteriaBuilder.isNull(root.get("assignedAgent")));
             if (query.teamId() != null) predicates.add(criteriaBuilder.equal(root.get("assignedTeam").get("id"), query.teamId()));
             if (query.unassignedTeam()) predicates.add(criteriaBuilder.isNull(root.get("assignedTeam")));
+            if (query.myTeams()) {
+                var assignedTeam = root.join("assignedTeam");
+                predicates.add(criteriaBuilder.isTrue(assignedTeam.get("active")));
+                predicates.add(criteriaBuilder.equal(assignedTeam.join("members").get("id"), actor.getId()));
+            }
             if (query.search() != null) addSearchPredicate(predicates, root, criteriaBuilder, query.search());
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
         };

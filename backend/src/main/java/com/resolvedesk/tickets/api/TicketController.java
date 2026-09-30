@@ -61,13 +61,14 @@ public class TicketController {
             @RequestParam(required = false) String unassigned,
             @RequestParam(required = false) String teamId,
             @RequestParam(required = false) String unassignedTeam,
+            @RequestParam(required = false) String myTeams,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") String page,
             @RequestParam(defaultValue = "20") String size,
             @RequestParam(defaultValue = "updatedAt,desc") String sort
     ) {
         return customerTicketWorkspaceService.listTickets(authenticatedUser.user(),
-                TicketQueueQuery.from(status, priority, assignedAgentId, unassigned, teamId, unassignedTeam, search, page, size, sort));
+                TicketQueueQuery.from(status, priority, assignedAgentId, unassigned, teamId, unassignedTeam, myTeams, search, page, size, sort));
     }
 
     @GetMapping("/{id}")
