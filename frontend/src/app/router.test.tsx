@@ -172,6 +172,7 @@ describe('application navigation', () => {
     expect(within(navigation).getByRole('link', { name: 'Create Ticket' })).toBeInTheDocument()
     expect(within(navigation).queryByRole('link', { name: 'Support Queue' })).not.toBeInTheDocument()
     expect(within(navigation).queryByRole('link', { name: 'User Administration' })).not.toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'Team Administration' })).not.toBeInTheDocument()
     expect(screen.getByText('Alex Morgan')).toBeInTheDocument()
     expect(screen.getByText('Customer')).toBeInTheDocument()
     expect(within(navigation).getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page')
@@ -185,6 +186,7 @@ describe('application navigation', () => {
     expect(within(navigation).getByRole('link', { name: 'Support Queue' })).toBeInTheDocument()
     expect(within(navigation).queryByRole('link', { name: 'My Tickets' })).not.toBeInTheDocument()
     expect(within(navigation).queryByRole('link', { name: 'User Administration' })).not.toBeInTheDocument()
+    expect(within(navigation).queryByRole('link', { name: 'Team Administration' })).not.toBeInTheDocument()
     expect(screen.getByText('Agent')).toBeInTheDocument()
   })
 
@@ -195,6 +197,7 @@ describe('application navigation', () => {
     const navigation = screen.getByRole('navigation', { name: 'Primary navigation' })
     expect(within(navigation).getByRole('link', { name: 'Support Queue' })).toBeInTheDocument()
     expect(within(navigation).getByRole('link', { name: 'User Administration' })).toBeInTheDocument()
+    expect(within(navigation).getByRole('link', { name: 'Team Administration' })).toBeInTheDocument()
     expect(within(navigation).queryByRole('link', { name: 'My Tickets' })).not.toBeInTheDocument()
     expect(screen.getByText('Administrator')).toBeInTheDocument()
   })
@@ -553,6 +556,7 @@ describe('ticket assignment and lifecycle controls', () => {
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket actions' })
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
+    await screen.findByRole('option', { name: 'Maria Garcia' })
     fireEvent.change(screen.getByLabelText('Assigned agent'), { target: { value: '8' } })
     fireEvent.click(screen.getByRole('button', { name: 'Update assignment' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/assignee', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ agentId: 8, version: 0 }) })))
@@ -992,5 +996,61 @@ describe('user administration', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(agentUser))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
+  })
+})
+
+describe('team administration', () => {
+  const fetchMock = vi.fn()
+  const teams = [{ id: 3, name: 'Billing', active: true }, { id: 4, name: 'Legacy Support', active: false }]
+
+  beforeEach(() => {
+    window.history.replaceState({}, '', '/admin/teams')
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  function restoreAdminSession(user: CurrentUser = administratorUser) {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(user))
+  }
+
+  it('lists active and inactive teams through the administrator API query', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Team administration' })).toBeInTheDocument()
+    const table = await screen.findByRole('table')
+    expect(within(table).getByText('Billing')).toBeInTheDocument()
+    expect(within(table).getByText('Legacy Support')).toBeInTheDocument()
+    expect(within(table).getByText('Active')).toBeInTheDocument()
+    expect(within(table).getByText('Inactive')).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams?includeInactive=true', expect.objectContaining({ credentials: 'include' }))
+    expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('[aria-current="page"]')).toHaveTextContent('Team Administration')
+  })
+
+  it('renders loading, empty, and error states', async () => {
+    restoreAdminSession()
+    let resolveTeams: (response: Response) => void = () => undefined
+    fetchMock.mockReturnValueOnce(new Promise<Response>(resolve => { resolveTeams = resolve }))
+    render(<AppRouter />)
+    expect(await screen.findByText('Loading teams…')).toBeInTheDocument()
+    resolveTeams(jsonResponse([]))
+    expect(await screen.findByText('Support teams will appear here when they are created.')).toBeInTheDocument()
+
+    window.history.replaceState({}, '', '/admin/teams')
+    fetchMock.mockReset()
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse({ detail: 'Team administration is temporarily unavailable.' }, 500))
+    render(<AppRouter />)
+    expect(await screen.findByRole('alert')).toHaveTextContent('Team administration is temporarily unavailable.')
+  })
+
+  it('keeps the team administration route unavailable to non-administrators', async () => {
+    restoreAdminSession(agentUser)
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Access denied' })).toBeInTheDocument()
+    expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/teams?includeInactive=true', expect.anything())
   })
 })

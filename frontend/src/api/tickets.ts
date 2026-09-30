@@ -13,6 +13,7 @@ export interface TicketUserSummary {
 export interface TicketTeamSummary {
   id: number
   name: string
+  active: boolean
 }
 
 export interface AgentSummary extends TicketUserSummary {
@@ -134,8 +135,8 @@ export function getAgents(teamId?: number): Promise<AgentSummary[]> {
   return apiRequest(teamId === undefined ? '/agents' : `/agents?teamId=${teamId}`)
 }
 
-export function getTeams(): Promise<TicketTeamSummary[]> {
-  return apiRequest('/teams')
+export function getTeams(includeInactive = false): Promise<TicketTeamSummary[]> {
+  return apiRequest(includeInactive ? '/teams?includeInactive=true' : '/teams')
 }
 
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
