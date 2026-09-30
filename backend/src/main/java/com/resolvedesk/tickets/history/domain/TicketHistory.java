@@ -76,6 +76,11 @@ public class TicketHistory {
         return changed(ticket, actor, TicketEventType.PRIORITY_CHANGED, "priority", oldValue, newValue);
     }
 
+    public static TicketHistory teamChanged(Ticket ticket, User actor, Long oldTeamId, Long newTeamId) {
+        return changed(ticket, actor, TicketEventType.TEAM_CHANGED, "assignedTeam",
+                oldTeamId == null ? null : oldTeamId.toString(), newTeamId == null ? null : newTeamId.toString());
+    }
+
     private static TicketHistory changed(
             Ticket ticket, User actor, TicketEventType eventType, String fieldName, String oldValue, String newValue
     ) {

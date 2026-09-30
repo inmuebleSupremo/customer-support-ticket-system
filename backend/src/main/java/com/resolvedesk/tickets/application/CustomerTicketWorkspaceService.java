@@ -11,6 +11,7 @@ import com.resolvedesk.tickets.persistence.TicketSpecifications;
 import com.resolvedesk.users.domain.User;
 import com.resolvedesk.users.domain.UserRole;
 import com.resolvedesk.users.persistence.UserRepository;
+import com.resolvedesk.teams.persistence.TeamRepository;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,15 +25,18 @@ public class CustomerTicketWorkspaceService {
     private final TicketRepository ticketRepository;
     private final TicketHistoryRepository ticketHistoryRepository;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
 
     public CustomerTicketWorkspaceService(
             TicketRepository ticketRepository,
             TicketHistoryRepository ticketHistoryRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            TeamRepository teamRepository
     ) {
         this.ticketRepository = ticketRepository;
         this.ticketHistoryRepository = ticketHistoryRepository;
         this.userRepository = userRepository;
+        this.teamRepository = teamRepository;
     }
 
     public PageResponse<TicketSummaryResponse> listTickets(User actor, TicketQueueQuery query) {
@@ -49,7 +53,7 @@ public class CustomerTicketWorkspaceService {
     public List<TicketHistoryResponse> getHistory(User actor, long ticketId) {
         findAccessibleTicket(actor, ticketId);
         return ticketHistoryRepository.findByTicketIdOrderByCreatedAtAsc(ticketId).stream()
-                .map(history -> TicketHistoryResponseMapper.toResponse(history, this::agentDisplayName))
+                .map(history -> TicketHistoryResponseMapper.toResponse(history, this::agentDisplayName, this::teamDisplayName))
                 .toList();
     }
 
@@ -57,6 +61,10 @@ public class CustomerTicketWorkspaceService {
         return userRepository.findById(userId)
                 .map(user -> user.getFirstName() + " " + user.getLastName())
                 .orElse("Unknown agent");
+    }
+
+    private String teamDisplayName(Long teamId) {
+        return teamRepository.findById(teamId).map(team -> team.getName()).orElse("Unknown team");
     }
 
     private Ticket findAccessibleTicket(User actor, long ticketId) {

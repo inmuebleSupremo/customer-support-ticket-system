@@ -3,6 +3,7 @@ package com.resolvedesk.users.application;
 import com.resolvedesk.shared.api.PageResponse;
 import com.resolvedesk.tickets.domain.TicketStatus;
 import com.resolvedesk.tickets.persistence.TicketRepository;
+import com.resolvedesk.teams.persistence.TeamRepository;
 import com.resolvedesk.users.api.UserMutationResponse;
 import com.resolvedesk.users.api.UserSummaryResponse;
 import com.resolvedesk.users.domain.User;
@@ -14,18 +15,23 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Comparator;
 
 @Service
 public class UserAdministrationService {
     private static final List<TicketStatus> NON_CLOSED_TICKET_STATUSES = List.of(TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED);
-    private static final List<TicketStatus> ACTIVE_TICKET_STATUSES = List.of(TicketStatus.OPEN, TicketStatus.IN_PROGRESS);
-
     private final UserRepository userRepository;
     private final TicketRepository ticketRepository;
+    private final TeamRepository teamRepository;
 
-    public UserAdministrationService(UserRepository userRepository, TicketRepository ticketRepository) {
+    public UserAdministrationService(
+            UserRepository userRepository,
+            TicketRepository ticketRepository,
+            TeamRepository teamRepository
+    ) {
         this.userRepository = userRepository;
         this.ticketRepository = ticketRepository;
+        this.teamRepository = teamRepository;
     }
 
     @Transactional(readOnly = true)
@@ -36,7 +42,7 @@ public class UserAdministrationService {
 
     @Transactional
     public UserMutationResponse changeRole(long userId, UserRole requestedRole) {
-        User user = findUser(userId);
+        User user = findUserForUpdate(userId);
         if (user.getRole() == UserRole.AGENT && requestedRole != UserRole.AGENT
                 && hasAssignedTickets(user, NON_CLOSED_TICKET_STATUSES)) {
             throw new AgentHasActiveTicketsException("Reassign or unassign the agent's non-closed tickets before changing the role.");
@@ -44,16 +50,19 @@ public class UserAdministrationService {
         if (user.isActive() && user.getRole() == UserRole.ADMIN && requestedRole != UserRole.ADMIN) {
             ensureNotLastActiveAdmin();
         }
+        if (user.getRole() == UserRole.AGENT && requestedRole != UserRole.AGENT) {
+            memberTeamsForUpdate(user.getId()).forEach(team -> team.removeMember(user));
+        }
         user.changeRole(requestedRole);
         return toMutation(user);
     }
 
     @Transactional
     public UserMutationResponse changeActive(long userId, boolean active) {
-        User user = findUser(userId);
+        User user = findUserForUpdate(userId);
         if (user.isActive() && !active && user.getRole() == UserRole.AGENT
-                && hasAssignedTickets(user, ACTIVE_TICKET_STATUSES)) {
-            throw new AgentHasActiveTicketsException("Reassign or unassign the agent's active tickets before deactivating the account.");
+                && hasAssignedTickets(user, NON_CLOSED_TICKET_STATUSES)) {
+            throw new AgentHasActiveTicketsException("Reassign or unassign the agent's non-closed tickets before deactivating the account.");
         }
         if (user.isActive() && !active && user.getRole() == UserRole.ADMIN) {
             ensureNotLastActiveAdmin();
@@ -62,8 +71,16 @@ public class UserAdministrationService {
         return toMutation(user);
     }
 
-    private User findUser(long id) {
-        return userRepository.findById(id).orElseThrow(() -> new UserNotFoundException(id));
+    private User findUserForUpdate(long id) {
+        return userRepository.findByIdForUpdate(id).orElseThrow(() -> new UserNotFoundException(id));
+    }
+
+    private List<com.resolvedesk.teams.domain.Team> memberTeamsForUpdate(long userId) {
+        List<Long> teamIds = teamRepository.findDistinctByMembersId(userId).stream()
+                .map(com.resolvedesk.teams.domain.Team::getId)
+                .sorted(Comparator.naturalOrder())
+                .toList();
+        return teamIds.isEmpty() ? List.of() : teamRepository.findAllByIdInOrderByIdForUpdate(teamIds);
     }
 
     private boolean hasAssignedTickets(User user, List<TicketStatus> statuses) {

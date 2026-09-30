@@ -5,9 +5,32 @@ export interface CreateTicketInput {
   description: string
 }
 
+export interface CreateTeamInput {
+  name: string
+}
+
 export interface TicketUserSummary {
   id: number
   displayName: string
+}
+
+export interface TicketTeamSummary {
+  id: number
+  name: string
+  active: boolean
+}
+
+export interface TeamMember {
+  id: number
+  displayName: string
+  email: string
+  active: boolean
+}
+
+export interface TeamAdministrationDetail extends TicketTeamSummary {
+  members: TeamMember[]
+  createdAt: string
+  updatedAt: string
 }
 
 export interface AgentSummary extends TicketUserSummary {
@@ -23,6 +46,7 @@ export interface TicketDetail {
   priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
   customer: TicketUserSummary
   assignedAgent: TicketUserSummary | null
+  assignedTeam: TicketTeamSummary | null
   createdAt: string
   updatedAt: string
   resolvedAt: string | null
@@ -38,6 +62,7 @@ export interface TicketSummary {
   priority: TicketDetail['priority']
   customer: TicketUserSummary
   assignedAgent: TicketUserSummary | null
+  assignedTeam: TicketTeamSummary | null
   createdAt: string
   updatedAt: string
   version: number
@@ -45,7 +70,7 @@ export interface TicketSummary {
 
 export interface TicketHistoryEntry {
   id: number
-  eventType: 'TICKET_CREATED' | 'STATUS_CHANGED' | 'PRIORITY_CHANGED' | 'ASSIGNMENT_CHANGED'
+  eventType: 'TICKET_CREATED' | 'STATUS_CHANGED' | 'PRIORITY_CHANGED' | 'ASSIGNMENT_CHANGED' | 'TEAM_CHANGED'
   fieldName: string | null
   oldValue: string | null
   newValue: string | null
@@ -76,6 +101,9 @@ export interface TicketListQuery {
   status?: TicketDetail['status']
   priority?: TicketDetail['priority']
   assignedAgentId?: string
+  teamId?: string
+  unassignedTeam?: boolean
+  myTeams?: boolean
   unassigned?: boolean
   search?: string
   page?: number
@@ -92,6 +120,9 @@ export function listTickets(query: TicketListQuery = {}): Promise<PageResponse<T
   if (query.status) params.set('status', query.status)
   if (query.priority) params.set('priority', query.priority)
   if (query.assignedAgentId) params.set('assignedAgentId', query.assignedAgentId)
+  if (query.teamId) params.set('teamId', query.teamId)
+  if (query.unassignedTeam) params.set('unassignedTeam', 'true')
+  if (query.myTeams) params.set('myTeams', 'true')
   if (query.unassigned) params.set('unassigned', 'true')
   if (query.search) params.set('search', query.search)
   if (query.page !== undefined) params.set('page', String(query.page))
@@ -117,14 +148,49 @@ export function createTicketComment(id: number, content: string): Promise<Ticket
   return apiRequest(`/tickets/${id}/comments`, { method: 'POST', body: JSON.stringify({ content }) }, true)
 }
 
-export function getAgents(): Promise<AgentSummary[]> {
-  return apiRequest('/agents')
+export function getAgents(teamId?: number): Promise<AgentSummary[]> {
+  return apiRequest(teamId === undefined ? '/agents' : `/agents?teamId=${teamId}`)
+}
+
+export function getTeams(includeInactive = false): Promise<TicketTeamSummary[]> {
+  return apiRequest(includeInactive ? '/teams?includeInactive=true' : '/teams')
+}
+
+export function getTeam(id: number): Promise<TeamAdministrationDetail> {
+  return apiRequest(`/teams/${id}`)
+}
+
+export function createTeam(input: CreateTeamInput): Promise<TicketTeamSummary> {
+  return apiRequest('/teams', { method: 'POST', body: JSON.stringify(input) }, true)
+}
+
+export function changeTeamName(id: number, input: CreateTeamInput): Promise<TicketTeamSummary> {
+  return apiRequest(`/teams/${id}/name`, { method: 'PATCH', body: JSON.stringify(input) }, true)
+}
+
+export function changeTeamActive(id: number, active: boolean): Promise<TicketTeamSummary> {
+  return apiRequest(`/teams/${id}/active`, { method: 'PATCH', body: JSON.stringify({ active }) }, true)
+}
+
+export function addTeamMember(teamId: number, agentId: number): Promise<TeamAdministrationDetail> {
+  return apiRequest(`/teams/${teamId}/members/${agentId}`, { method: 'PUT' }, true)
+}
+
+export function removeTeamMember(teamId: number, agentId: number): Promise<TeamAdministrationDetail> {
+  return apiRequest(`/teams/${teamId}/members/${agentId}`, { method: 'DELETE' }, true)
 }
 
 export function changeTicketAssignee(id: number, agentId: number | null, version: number) {
   return apiRequest(`/tickets/${id}/assignee`, {
     method: 'PATCH',
     body: JSON.stringify({ agentId, version })
+  }, true)
+}
+
+export function changeTicketTeam(id: number, teamId: number | null, version: number) {
+  return apiRequest(`/tickets/${id}/team`, {
+    method: 'PATCH',
+    body: JSON.stringify({ teamId, version })
   }, true)
 }
 

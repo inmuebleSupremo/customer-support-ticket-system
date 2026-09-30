@@ -11,6 +11,7 @@ import { TicketDetailPage } from '../features/tickets/TicketDetailPage'
 import { TicketListPage } from '../features/tickets/TicketListPage'
 import { AgentQueuePage } from '../features/tickets/AgentQueuePage'
 import { UserAdministrationPage } from '../features/users/UserAdministrationPage'
+import { TeamAdministrationPage } from '../features/teams/TeamAdministrationPage'
 
 export function AppRouter() {
   return (
@@ -35,6 +36,7 @@ export function AppRouter() {
             </Route>
             <Route element={<ProtectedRoute allowedRoles={['ADMIN']} />}>
               <Route path="admin/users" element={<UserAdministrationPage />} />
+              <Route path="admin/teams" element={<TeamAdministrationPage />} />
             </Route>
             <Route path="*" element={<NotFoundPage />} />
           </Route>

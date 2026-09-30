@@ -114,7 +114,7 @@ class UserAdministrationIntegrationTests {
     }
 
     @Test
-    void activationChangesApplyTheDocumentedAgentAndAdministratorSafeguards() throws Exception {
+    void activationChangesRejectAgentsWithAnyNonClosedAssignmentAndProtectAdministrators() throws Exception {
         User administrator = persistedUser("admin@example.com", UserRole.ADMIN);
         User customer = persistedUser("customer@example.com", UserRole.CUSTOMER);
         User activeAgent = persistedUser("active-agent@example.com", UserRole.AGENT);
@@ -127,6 +127,11 @@ class UserAdministrationIntegrationTests {
         mockMvc.perform(patch("/api/v1/users/{id}/active", activeAgent.getId()).with(authentication(administrator)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"active\":false}"))
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("AGENT_HAS_ACTIVE_TICKETS"));
+        mockMvc.perform(patch("/api/v1/users/{id}/active", resolvedAgent.getId()).with(authentication(administrator)).with(csrf())
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"active\":false}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("AGENT_HAS_ACTIVE_TICKETS"));
+        jdbcTemplate.update("UPDATE tickets SET assigned_agent_id = NULL WHERE assigned_agent_id = ?", resolvedAgent.getId());
+        entityManager.clear();
         mockMvc.perform(patch("/api/v1/users/{id}/active", resolvedAgent.getId()).with(authentication(administrator)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"active\":false}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.active").value(false));

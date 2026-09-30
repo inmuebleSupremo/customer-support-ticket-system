@@ -1,6 +1,7 @@
 package com.resolvedesk.tickets.domain;
 
 import com.resolvedesk.users.domain.User;
+import com.resolvedesk.teams.domain.Team;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -33,6 +34,10 @@ public class Ticket {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "assigned_agent_id")
     private User assignedAgent;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "assigned_team_id")
+    private Team assignedTeam;
 
     @Column(nullable = false, length = 120)
     private String title;
@@ -85,6 +90,14 @@ public class Ticket {
         assignedAgent = null;
     }
 
+    public void assignTeam(Team team) {
+        assignedTeam = team;
+    }
+
+    public void clearTeam() {
+        assignedTeam = null;
+    }
+
     public void changeStatus(TicketStatus newStatus) {
         status = newStatus;
         if (newStatus == TicketStatus.RESOLVED) {
@@ -119,6 +132,7 @@ public class Ticket {
     public Long getId() { return id; }
     public User getCustomer() { return customer; }
     public User getAssignedAgent() { return assignedAgent; }
+    public Team getAssignedTeam() { return assignedTeam; }
     public String getTitle() { return title; }
     public String getDescription() { return description; }
     public TicketStatus getStatus() { return status; }

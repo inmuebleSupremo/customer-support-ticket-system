@@ -17,7 +17,7 @@ function roleNavigation(role: UserRole): NavigationItem[] {
     return [homeItem, { label: 'My Tickets', to: '/tickets', isActive: pathname => (pathname === '/tickets' || pathname.startsWith('/tickets/')) && pathname !== '/tickets/new' }, { label: 'Create Ticket', to: '/tickets/new', isActive: pathname => pathname === '/tickets/new' }]
   }
   if (role === 'ADMIN') {
-    return [homeItem, { label: 'Support Queue', to: '/queue', isActive: pathname => pathname === '/queue' || pathname.startsWith('/tickets/') }, { label: 'User Administration', to: '/admin/users', isActive: pathname => pathname.startsWith('/admin/users') }]
+    return [homeItem, { label: 'Support Queue', to: '/queue', isActive: pathname => pathname === '/queue' || pathname.startsWith('/tickets/') }, { label: 'User Administration', to: '/admin/users', isActive: pathname => pathname.startsWith('/admin/users') }, { label: 'Team Administration', to: '/admin/teams', isActive: pathname => pathname.startsWith('/admin/teams') }]
   }
   return [homeItem, { label: 'Support Queue', to: '/queue', isActive: pathname => pathname === '/queue' || pathname.startsWith('/tickets/') }]
 }
