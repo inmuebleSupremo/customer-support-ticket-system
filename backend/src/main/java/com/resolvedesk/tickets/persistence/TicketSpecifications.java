@@ -27,6 +27,8 @@ public final class TicketSpecifications {
             if (query.priority() != null) predicates.add(criteriaBuilder.equal(root.get("priority"), query.priority()));
             if (query.assignedAgentId() != null) predicates.add(criteriaBuilder.equal(root.get("assignedAgent").get("id"), query.assignedAgentId()));
             if (query.unassigned()) predicates.add(criteriaBuilder.isNull(root.get("assignedAgent")));
+            if (query.teamId() != null) predicates.add(criteriaBuilder.equal(root.get("assignedTeam").get("id"), query.teamId()));
+            if (query.unassignedTeam()) predicates.add(criteriaBuilder.isNull(root.get("assignedTeam")));
             if (query.search() != null) addSearchPredicate(predicates, root, criteriaBuilder, query.search());
             return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
         };

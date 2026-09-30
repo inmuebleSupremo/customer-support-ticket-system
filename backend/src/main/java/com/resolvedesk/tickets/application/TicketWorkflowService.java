@@ -3,9 +3,13 @@ package com.resolvedesk.tickets.application;
 import com.resolvedesk.tickets.api.ChangeTicketAssigneeRequest;
 import com.resolvedesk.tickets.api.ChangeTicketStatusRequest;
 import com.resolvedesk.tickets.api.ChangeTicketPriorityRequest;
+import com.resolvedesk.tickets.api.ChangeTicketTeamRequest;
 import com.resolvedesk.tickets.api.TicketAssignmentMutationResponse;
 import com.resolvedesk.tickets.api.TicketStatusMutationResponse;
 import com.resolvedesk.tickets.api.TicketPriorityMutationResponse;
+import com.resolvedesk.tickets.api.TicketTeamMutationResponse;
+import com.resolvedesk.teams.domain.Team;
+import com.resolvedesk.teams.persistence.TeamRepository;
 import com.resolvedesk.tickets.domain.TicketPriority;
 import com.resolvedesk.tickets.domain.Ticket;
 import com.resolvedesk.tickets.domain.TicketStatus;
@@ -34,15 +38,18 @@ public class TicketWorkflowService {
     private final TicketRepository ticketRepository;
     private final TicketHistoryRepository ticketHistoryRepository;
     private final UserRepository userRepository;
+    private final TeamRepository teamRepository;
 
     public TicketWorkflowService(
             TicketRepository ticketRepository,
             TicketHistoryRepository ticketHistoryRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            TeamRepository teamRepository
     ) {
         this.ticketRepository = ticketRepository;
         this.ticketHistoryRepository = ticketHistoryRepository;
         this.userRepository = userRepository;
+        this.teamRepository = teamRepository;
     }
 
     @Transactional
@@ -54,6 +61,12 @@ public class TicketWorkflowService {
         User assignedAgent = request.agentId() == null ? null : userRepository.findById(request.agentId())
                 .filter(user -> user.isActive() && user.getRole() == UserRole.AGENT)
                 .orElseThrow(InvalidAssigneeException::new);
+        if (assignedAgent != null && ticket.getAssignedTeam() != null) {
+            Team team = teamRepository.findByIdForUpdate(ticket.getAssignedTeam().getId()).orElseThrow(InvalidAssigneeException::new);
+            if (!teamRepository.existsByIdAndMembersId(team.getId(), assignedAgent.getId())) {
+                throw new AssigneeNotInTeamException();
+            }
+        }
         Long oldAgentId = ticket.getAssignedAgent() == null ? null : ticket.getAssignedAgent().getId();
         if (assignedAgent == null) {
             ticket.unassign();
@@ -64,6 +77,34 @@ public class TicketWorkflowService {
         ticketHistoryRepository.save(TicketHistory.assignmentChanged(ticket, actor, oldAgentId,
                 assignedAgent == null ? null : assignedAgent.getId()));
         return TicketResponseMapper.toAssignmentMutation(ticket);
+    }
+
+    @Transactional
+    public TicketTeamMutationResponse changeTeam(User actor, long ticketId, ChangeTicketTeamRequest request) {
+        Ticket ticket = findAccessibleTicket(actor, ticketId);
+        requireNotClosed(ticket);
+        requireCurrentVersion(ticket, request.version());
+
+        Team requestedTeam = request.teamId() == null ? null : teamRepository.findByIdForUpdate(request.teamId())
+                .orElseThrow(InactiveTeamException::new);
+        if (requestedTeam != null && !requestedTeam.isActive()) {
+            throw new InactiveTeamException();
+        }
+        Long oldTeamId = ticket.getAssignedTeam() == null ? null : ticket.getAssignedTeam().getId();
+        Long newTeamId = requestedTeam == null ? null : requestedTeam.getId();
+        if (java.util.Objects.equals(oldTeamId, newTeamId)) {
+            return TicketResponseMapper.toTeamMutation(ticket);
+        }
+
+        Long oldAgentId = ticket.getAssignedAgent() == null ? null : ticket.getAssignedAgent().getId();
+        boolean clearAssignee = requestedTeam != null && oldAgentId != null
+                && !teamRepository.existsByIdAndMembersId(requestedTeam.getId(), oldAgentId);
+        if (requestedTeam == null) ticket.clearTeam(); else ticket.assignTeam(requestedTeam);
+        if (clearAssignee) ticket.unassign();
+        ticketRepository.saveAndFlush(ticket);
+        ticketHistoryRepository.save(TicketHistory.teamChanged(ticket, actor, oldTeamId, newTeamId));
+        if (clearAssignee) ticketHistoryRepository.save(TicketHistory.assignmentChanged(ticket, actor, oldAgentId, null));
+        return TicketResponseMapper.toTeamMutation(ticket);
     }
 
     @Transactional

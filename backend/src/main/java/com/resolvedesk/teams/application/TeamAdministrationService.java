@@ -96,7 +96,7 @@ public class TeamAdministrationService {
 
     @Transactional
     public TeamDetailResponse removeMember(long teamId, long userId) {
-        Team team = findTeam(teamId);
+        Team team = teamRepository.findByIdForUpdate(teamId).orElseThrow(() -> new TeamNotFoundException(teamId));
         User user = userRepository.findById(userId).orElseThrow(() -> new UserNotFoundException(userId));
         if (ticketRepository.existsByAssignedAgentIdAndAssignedTeamIdAndStatusIn(
                 user.getId(), team.getId(), NON_CLOSED_TICKET_STATUSES

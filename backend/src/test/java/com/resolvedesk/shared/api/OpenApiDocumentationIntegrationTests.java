@@ -44,6 +44,7 @@ class OpenApiDocumentationIntegrationTests {
                 .andExpect(jsonPath("$.paths['/api/v1/tickets/{id}'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/tickets/{id}/history'].get").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/tickets/{id}/assignee'].patch").exists())
+                .andExpect(jsonPath("$.paths['/api/v1/tickets/{id}/team'].patch").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/tickets/{id}/status'].patch").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/tickets/{id}/priority'].patch").exists())
                 .andExpect(jsonPath("$.paths['/api/v1/tickets/{ticketId}/comments'].get").exists())

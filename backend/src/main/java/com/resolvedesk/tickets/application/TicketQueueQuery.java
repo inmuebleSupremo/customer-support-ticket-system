@@ -12,6 +12,8 @@ public record TicketQueueQuery(
         TicketPriority priority,
         Long assignedAgentId,
         boolean unassigned,
+        Long teamId,
+        boolean unassignedTeam,
         String search,
         int page,
         int size,
@@ -24,6 +26,8 @@ public record TicketQueueQuery(
             String priority,
             String assignedAgentId,
             String unassigned,
+            String teamId,
+            String unassignedTeam,
             String search,
             String page,
             String size,
@@ -31,14 +35,21 @@ public record TicketQueueQuery(
     ) {
         boolean unassignedValue = parseBoolean(unassigned, "unassigned");
         Long assignedAgentIdValue = parseOptionalPositiveLong(assignedAgentId, "assignedAgentId");
+        boolean unassignedTeamValue = parseBoolean(unassignedTeam, "unassignedTeam");
+        Long teamIdValue = parseOptionalPositiveLong(teamId, "teamId");
         if (unassignedValue && assignedAgentIdValue != null) {
             throw new InvalidTicketQueryException("assignedAgentId and unassigned=true cannot be used together.");
+        }
+        if (unassignedTeamValue && teamIdValue != null) {
+            throw new InvalidTicketQueryException("teamId and unassignedTeam=true cannot be used together.");
         }
         return new TicketQueueQuery(
                 parseEnum(status, TicketStatus.class, "status"),
                 parseEnum(priority, TicketPriority.class, "priority"),
                 assignedAgentIdValue,
                 unassignedValue,
+                teamIdValue,
+                unassignedTeamValue,
                 normalizeOptional(search),
                 parsePage(page),
                 parseSize(size),

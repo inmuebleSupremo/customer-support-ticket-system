@@ -4,8 +4,10 @@ import com.resolvedesk.tickets.api.TicketDetailResponse;
 import com.resolvedesk.tickets.api.TicketAssignmentMutationResponse;
 import com.resolvedesk.tickets.api.TicketStatusMutationResponse;
 import com.resolvedesk.tickets.api.TicketPriorityMutationResponse;
+import com.resolvedesk.tickets.api.TicketTeamMutationResponse;
 import com.resolvedesk.tickets.api.TicketSummaryResponse;
 import com.resolvedesk.tickets.api.UserSummaryResponse;
+import com.resolvedesk.teams.api.TeamSummaryResponse;
 import com.resolvedesk.tickets.domain.Ticket;
 import com.resolvedesk.users.domain.User;
 
@@ -23,6 +25,7 @@ public final class TicketResponseMapper {
                 ticket.getPriority(),
                 toUserSummary(ticket.getCustomer()),
                 ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
+                toTeamSummary(ticket),
                 ticket.getCreatedAt(),
                 ticket.getUpdatedAt(),
                 ticket.getResolvedAt(),
@@ -40,6 +43,7 @@ public final class TicketResponseMapper {
                 ticket.getPriority(),
                 toUserSummary(ticket.getCustomer()),
                 ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
+                toTeamSummary(ticket),
                 ticket.getCreatedAt(),
                 ticket.getUpdatedAt(),
                 ticket.getVersion()
@@ -55,6 +59,16 @@ public final class TicketResponseMapper {
         return new TicketAssignmentMutationResponse(ticket.getId(), TicketReference.format(ticket.getId()),
                 ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
                 ticket.getUpdatedAt(), ticket.getVersion());
+    }
+
+    public static TicketTeamMutationResponse toTeamMutation(Ticket ticket) {
+        return new TicketTeamMutationResponse(ticket.getId(), TicketReference.format(ticket.getId()), toTeamSummary(ticket),
+                ticket.getAssignedAgent() == null ? null : toUserSummary(ticket.getAssignedAgent()),
+                ticket.getUpdatedAt(), ticket.getVersion());
+    }
+
+    private static TeamSummaryResponse toTeamSummary(Ticket ticket) {
+        return ticket.getAssignedTeam() == null ? null : new TeamSummaryResponse(ticket.getAssignedTeam().getId(), ticket.getAssignedTeam().getName());
     }
 
     public static TicketPriorityMutationResponse toPriorityMutation(Ticket ticket) {

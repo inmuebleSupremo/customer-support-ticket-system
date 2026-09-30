@@ -59,13 +59,15 @@ public class TicketController {
             @RequestParam(required = false) String priority,
             @RequestParam(required = false) String assignedAgentId,
             @RequestParam(required = false) String unassigned,
+            @RequestParam(required = false) String teamId,
+            @RequestParam(required = false) String unassignedTeam,
             @RequestParam(required = false) String search,
             @RequestParam(defaultValue = "0") String page,
             @RequestParam(defaultValue = "20") String size,
             @RequestParam(defaultValue = "updatedAt,desc") String sort
     ) {
         return customerTicketWorkspaceService.listTickets(authenticatedUser.user(),
-                TicketQueueQuery.from(status, priority, assignedAgentId, unassigned, search, page, size, sort));
+                TicketQueueQuery.from(status, priority, assignedAgentId, unassigned, teamId, unassignedTeam, search, page, size, sort));
     }
 
     @GetMapping("/{id}")
@@ -91,6 +93,15 @@ public class TicketController {
             @Valid @RequestBody ChangeTicketAssigneeRequest request
     ) {
         return ticketWorkflowService.changeAssignee(authenticatedUser.user(), id, request);
+    }
+
+    @PatchMapping("/{id}/team")
+    public TicketTeamMutationResponse changeTeam(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser,
+            @PathVariable long id,
+            @Valid @RequestBody ChangeTicketTeamRequest request
+    ) {
+        return ticketWorkflowService.changeTeam(authenticatedUser.user(), id, request);
     }
 
     @PatchMapping("/{id}/status")

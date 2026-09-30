@@ -83,6 +83,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/v1/users").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/users/*/role", "/api/v1/users/*/active").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/assignee").hasAnyRole("AGENT", "ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/team").hasAnyRole("AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/status").hasAnyRole("CUSTOMER", "AGENT", "ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/tickets/*/priority").hasAnyRole("AGENT", "ADMIN")
                         .anyRequest().authenticated())

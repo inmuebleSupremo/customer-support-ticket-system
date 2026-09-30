@@ -16,6 +16,8 @@ import com.resolvedesk.teams.application.TeamNameAlreadyExistsException;
 import com.resolvedesk.teams.application.InvalidTeamMemberException;
 import com.resolvedesk.teams.application.TeamHasActiveTicketsException;
 import com.resolvedesk.teams.application.TeamMemberHasActiveTicketsException;
+import com.resolvedesk.tickets.application.InactiveTeamException;
+import com.resolvedesk.tickets.application.AssigneeNotInTeamException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -108,6 +110,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidAssigneeException.class)
     ResponseEntity<ProblemResponse> handleInvalidAssignee(InvalidAssigneeException exception, HttpServletRequest request) {
         return problem(HttpStatus.CONFLICT, "Invalid ticket assignee", exception.getMessage(), "INVALID_ASSIGNEE", request, Map.of());
+    }
+
+    @ExceptionHandler(InactiveTeamException.class)
+    ResponseEntity<ProblemResponse> handleInactiveTeam(InactiveTeamException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Invalid ticket team", exception.getMessage(), "INVALID_TEAM", request, Map.of());
+    }
+
+    @ExceptionHandler(AssigneeNotInTeamException.class)
+    ResponseEntity<ProblemResponse> handleAssigneeNotInTeam(AssigneeNotInTeamException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Assignee is not in ticket team", exception.getMessage(), "ASSIGNEE_NOT_IN_TEAM", request, Map.of());
     }
 
     @ExceptionHandler(InvalidTicketStatusTransitionException.class)

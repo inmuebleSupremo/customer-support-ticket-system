@@ -90,6 +90,14 @@ public class Ticket {
         assignedAgent = null;
     }
 
+    public void assignTeam(Team team) {
+        assignedTeam = team;
+    }
+
+    public void clearTeam() {
+        assignedTeam = null;
+    }
+
     public void changeStatus(TicketStatus newStatus) {
         status = newStatus;
         if (newStatus == TicketStatus.RESOLVED) {

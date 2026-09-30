@@ -12,26 +12,29 @@ final class TicketHistoryResponseMapper {
     private TicketHistoryResponseMapper() {
     }
 
-    static TicketHistoryResponse toResponse(TicketHistory history, Function<Long, String> agentDisplayName) {
+    static TicketHistoryResponse toResponse(TicketHistory history, Function<Long, String> agentDisplayName, Function<Long, String> teamDisplayName) {
         return new TicketHistoryResponse(
                 history.getId(),
                 history.getEventType(),
                 history.getFieldName(),
                 history.getOldValue(),
                 history.getNewValue(),
-                displayValue(history, history.getOldValue(), agentDisplayName),
-                displayValue(history, history.getNewValue(), agentDisplayName),
+                displayValue(history, history.getOldValue(), agentDisplayName, teamDisplayName),
+                displayValue(history, history.getNewValue(), agentDisplayName, teamDisplayName),
                 TicketResponseMapper.toUserSummary(history.getActor()),
                 history.getCreatedAt()
         );
     }
 
-    private static String displayValue(TicketHistory history, String value, Function<Long, String> agentDisplayName) {
+    private static String displayValue(TicketHistory history, String value, Function<Long, String> agentDisplayName, Function<Long, String> teamDisplayName) {
         if (history.getEventType() == TicketEventType.TICKET_CREATED) {
             return null;
         }
         if (history.getEventType() == TicketEventType.ASSIGNMENT_CHANGED) {
             return value == null ? "Unassigned" : agentDisplayName.apply(Long.valueOf(value));
+        }
+        if (history.getEventType() == TicketEventType.TEAM_CHANGED) {
+            return value == null ? "Unassigned" : teamDisplayName.apply(Long.valueOf(value));
         }
         return value == null ? null : toDisplayCase(value);
     }
