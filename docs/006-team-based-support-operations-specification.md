@@ -18,7 +18,7 @@ Add `TEAM_CHANGED` to `TicketEventType`. It uses `fieldName: assignedTeam`; immu
 
 | Endpoint | Access | Purpose |
 |---|---|---|
-| `GET /api/v1/teams` | AGENT, ADMIN | Active team summaries for routing/filtering. |
+| `GET /api/v1/teams` | AGENT, ADMIN | Active team summaries for routing/filtering. `includeInactive=true` returns active and inactive summaries for ADMIN only. |
 | `GET /api/v1/teams/{id}` | ADMIN | Administrative team detail, including members. |
 | `POST /api/v1/teams` | ADMIN | Create a team. |
 | `PATCH /api/v1/teams/{id}/name` | ADMIN | Rename a team. |
@@ -27,8 +27,9 @@ Add `TEAM_CHANGED` to `TicketEventType`. It uses `fieldName: assignedTeam`; immu
 | `DELETE /api/v1/teams/{id}/members/{userId}` | ADMIN | Remove a current member, subject to ticket-assignment validation. |
 | `GET /api/v1/users/me/teams` | AGENT, ADMIN | Active summaries for the authenticated user's memberships only. |
 | `PATCH /api/v1/tickets/{id}/team` | AGENT, ADMIN | Set or clear `assignedTeam`; request includes nullable `teamId` and required ticket `version`. |
+| `GET /api/v1/agents?teamId={id}` | AGENT, ADMIN | Existing active-agent lookup, optionally limited to current members of the specified team. |
 
-`GET /api/v1/tickets` adds optional `teamId` and `unassignedTeam` query parameters. `teamId` and `unassignedTeam=true` are mutually exclusive. The existing `unassigned` parameter continues to mean that no individual agent is assigned.
+`GET /api/v1/tickets` adds optional `teamId`, `unassignedTeam`, and `myTeams` query parameters. `teamId`, `unassignedTeam=true`, and `myTeams=true` are mutually exclusive. `myTeams=true` returns tickets for any active team of which the authenticated user is currently a member. The existing `unassigned` parameter continues to mean that no individual agent is assigned.
 
 Existing routes are neither removed nor renamed. Existing ticket responses gain only the additive `assignedTeam` field. Customers cannot call team or current-user-team endpoints, but may receive the assigned-team summary for tickets they are authorized to read.
 
@@ -44,7 +45,7 @@ Existing users, tickets, comments, and history require no data rewrite. Existing
 
 ## Queue and frontend contract
 
-The support queue remains global for AGENT and ADMIN users. It gains team and no-team filters plus a frontend “My teams” convenience view backed by `GET /api/v1/users/me/teams`; this is not an authorization restriction. Queue and ticket-detail views show the current team. Ticket detail supports staff routing and restricts individual-assignee choices to current team members when a team is selected. An ADMIN-only team administration workspace manages teams and membership.
+The support queue remains global for AGENT and ADMIN users. It gains team and no-team filters plus a frontend “My Teams” convenience view backed by `GET /api/v1/tickets?myTeams=true`; this is not an authorization restriction. `GET /api/v1/users/me/teams` remains available for current-user membership lookup. Queue and ticket-detail views show the current team. Ticket detail supports staff routing and restricts individual-assignee choices to current team members when a team is selected. An ADMIN-only team administration workspace manages teams and membership.
 
 ## Required verification
 
