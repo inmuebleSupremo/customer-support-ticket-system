@@ -927,6 +927,8 @@ describe('user administration', () => {
     expect(within(table).getByText('Maria Garcia')).toBeInTheDocument()
     expect(within(table).getAllByText('Administrator')).not.toHaveLength(0)
     expect(within(table).getAllByText('Active')).not.toHaveLength(0)
+    expect(within(table).getByText('Can manage users and operational settings.')).toBeInTheDocument()
+    expect(within(table).getAllByText('Can sign in and use their permitted workspace.')).not.toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/users?page=1&sort=createdAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'AGENT' } })
