@@ -16,4 +16,10 @@ public interface TicketRepository extends JpaRepository<Ticket, Long>, JpaSpecif
     Optional<Ticket> findByIdAndCustomerId(Long id, Long customerId);
 
     boolean existsByAssignedAgentIdAndStatusIn(Long assignedAgentId, Collection<TicketStatus> statuses);
+
+    boolean existsByAssignedTeamIdAndStatusIn(Long assignedTeamId, Collection<TicketStatus> statuses);
+
+    boolean existsByAssignedAgentIdAndAssignedTeamIdAndStatusIn(
+            Long assignedAgentId, Long assignedTeamId, Collection<TicketStatus> statuses
+    );
 }

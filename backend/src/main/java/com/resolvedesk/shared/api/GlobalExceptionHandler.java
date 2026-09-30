@@ -11,6 +11,11 @@ import com.resolvedesk.users.application.AgentHasActiveTicketsException;
 import com.resolvedesk.users.application.LastActiveAdminException;
 import com.resolvedesk.users.application.UserNotFoundException;
 import com.resolvedesk.users.application.InvalidUserQueryException;
+import com.resolvedesk.teams.application.TeamNotFoundException;
+import com.resolvedesk.teams.application.TeamNameAlreadyExistsException;
+import com.resolvedesk.teams.application.InvalidTeamMemberException;
+import com.resolvedesk.teams.application.TeamHasActiveTicketsException;
+import com.resolvedesk.teams.application.TeamMemberHasActiveTicketsException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -53,6 +58,31 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(UserNotFoundException.class)
     ResponseEntity<ProblemResponse> handleUserNotFound(UserNotFoundException exception, HttpServletRequest request) {
         return problem(HttpStatus.NOT_FOUND, "User not found", exception.getMessage(), "RESOURCE_NOT_FOUND", request, Map.of());
+    }
+
+    @ExceptionHandler(TeamNotFoundException.class)
+    ResponseEntity<ProblemResponse> handleTeamNotFound(TeamNotFoundException exception, HttpServletRequest request) {
+        return problem(HttpStatus.NOT_FOUND, "Team not found", exception.getMessage(), "RESOURCE_NOT_FOUND", request, Map.of());
+    }
+
+    @ExceptionHandler(TeamNameAlreadyExistsException.class)
+    ResponseEntity<ProblemResponse> handleTeamNameAlreadyExists(TeamNameAlreadyExistsException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Team name already exists", exception.getMessage(), "TEAM_NAME_ALREADY_EXISTS", request, Map.of());
+    }
+
+    @ExceptionHandler(InvalidTeamMemberException.class)
+    ResponseEntity<ProblemResponse> handleInvalidTeamMember(InvalidTeamMemberException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Invalid team member", exception.getMessage(), "INVALID_TEAM_MEMBER", request, Map.of());
+    }
+
+    @ExceptionHandler(TeamHasActiveTicketsException.class)
+    ResponseEntity<ProblemResponse> handleTeamHasActiveTickets(TeamHasActiveTicketsException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Team has active tickets", exception.getMessage(), "TEAM_HAS_ACTIVE_TICKETS", request, Map.of());
+    }
+
+    @ExceptionHandler(TeamMemberHasActiveTicketsException.class)
+    ResponseEntity<ProblemResponse> handleTeamMemberHasActiveTickets(TeamMemberHasActiveTicketsException exception, HttpServletRequest request) {
+        return problem(HttpStatus.CONFLICT, "Team member has active tickets", exception.getMessage(), "TEAM_MEMBER_HAS_ACTIVE_TICKETS", request, Map.of());
     }
 
     @ExceptionHandler(InvalidTicketQueryException.class)

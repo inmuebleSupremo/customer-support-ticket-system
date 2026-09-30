@@ -3,6 +3,7 @@ package com.resolvedesk.users.application;
 import com.resolvedesk.shared.api.PageResponse;
 import com.resolvedesk.tickets.domain.TicketStatus;
 import com.resolvedesk.tickets.persistence.TicketRepository;
+import com.resolvedesk.teams.persistence.TeamRepository;
 import com.resolvedesk.users.api.UserMutationResponse;
 import com.resolvedesk.users.api.UserSummaryResponse;
 import com.resolvedesk.users.domain.User;
@@ -18,14 +19,18 @@ import java.util.List;
 @Service
 public class UserAdministrationService {
     private static final List<TicketStatus> NON_CLOSED_TICKET_STATUSES = List.of(TicketStatus.OPEN, TicketStatus.IN_PROGRESS, TicketStatus.RESOLVED);
-    private static final List<TicketStatus> ACTIVE_TICKET_STATUSES = List.of(TicketStatus.OPEN, TicketStatus.IN_PROGRESS);
-
     private final UserRepository userRepository;
     private final TicketRepository ticketRepository;
+    private final TeamRepository teamRepository;
 
-    public UserAdministrationService(UserRepository userRepository, TicketRepository ticketRepository) {
+    public UserAdministrationService(
+            UserRepository userRepository,
+            TicketRepository ticketRepository,
+            TeamRepository teamRepository
+    ) {
         this.userRepository = userRepository;
         this.ticketRepository = ticketRepository;
+        this.teamRepository = teamRepository;
     }
 
     @Transactional(readOnly = true)
@@ -44,6 +49,9 @@ public class UserAdministrationService {
         if (user.isActive() && user.getRole() == UserRole.ADMIN && requestedRole != UserRole.ADMIN) {
             ensureNotLastActiveAdmin();
         }
+        if (user.getRole() == UserRole.AGENT && requestedRole != UserRole.AGENT) {
+            teamRepository.findDistinctByMembersId(user.getId()).forEach(team -> team.removeMember(user));
+        }
         user.changeRole(requestedRole);
         return toMutation(user);
     }
@@ -52,8 +60,8 @@ public class UserAdministrationService {
     public UserMutationResponse changeActive(long userId, boolean active) {
         User user = findUser(userId);
         if (user.isActive() && !active && user.getRole() == UserRole.AGENT
-                && hasAssignedTickets(user, ACTIVE_TICKET_STATUSES)) {
-            throw new AgentHasActiveTicketsException("Reassign or unassign the agent's active tickets before deactivating the account.");
+                && hasAssignedTickets(user, NON_CLOSED_TICKET_STATUSES)) {
+            throw new AgentHasActiveTicketsException("Reassign or unassign the agent's non-closed tickets before deactivating the account.");
         }
         if (user.isActive() && !active && user.getRole() == UserRole.ADMIN) {
             ensureNotLastActiveAdmin();

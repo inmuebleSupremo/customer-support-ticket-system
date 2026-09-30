@@ -18,10 +18,11 @@ class FlywayFoundationTests {
     @Test
     void flywayCreatesTheVersionedFoundationAndTicketSchemas() {
         Integer tableCount = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' AND UPPER(TABLE_NAME) IN ('USERS', 'TICKETS', 'TICKET_HISTORY')",
+                "SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'PUBLIC' "
+                        + "AND UPPER(TABLE_NAME) IN ('USERS', 'TICKETS', 'TICKET_HISTORY', 'COMMENTS', 'TEAMS', 'TEAM_MEMBERS')",
                 Integer.class
         );
 
-        assertThat(tableCount).isEqualTo(3);
+        assertThat(tableCount).isEqualTo(6);
     }
 }
