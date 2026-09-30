@@ -52,7 +52,7 @@ export interface TicketSummary {
 
 export interface TicketHistoryEntry {
   id: number
-  eventType: 'TICKET_CREATED' | 'STATUS_CHANGED' | 'PRIORITY_CHANGED' | 'ASSIGNMENT_CHANGED'
+  eventType: 'TICKET_CREATED' | 'STATUS_CHANGED' | 'PRIORITY_CHANGED' | 'ASSIGNMENT_CHANGED' | 'TEAM_CHANGED'
   fieldName: string | null
   oldValue: string | null
   newValue: string | null

@@ -582,6 +582,31 @@ describe('ticket assignment and lifecycle controls', () => {
     expect(screen.queryByRole('heading', { name: 'Ticket actions' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
   })
+
+  it('shows Unrouted when a ticket has no assigned team', async () => {
+    restoreSession(authenticatedUser)
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    render(<AppRouter />)
+    expect(await screen.findByRole('heading', { name: 'Ticket details' })).toBeInTheDocument()
+    expect(screen.getByText('Assigned team')).toBeInTheDocument()
+    expect(screen.getByText('Unrouted')).toBeInTheDocument()
+  })
+
+  it('shows the assigned team and its human-readable activity change', async () => {
+    restoreSession()
+    const routedTicket = { ...ticket, assignedTeam: { id: 3, name: 'Billing' } }
+    const teamHistory = [{ id: 701, eventType: 'TEAM_CHANGED' as const, fieldName: 'assignedTeam', oldValue: '2', newValue: '3', oldDisplayValue: 'Technical', newDisplayValue: 'Billing', actor: { id: 8, displayName: 'Maria Garcia' }, createdAt: '2026-09-29T10:01:00Z' }]
+    fetchMock.mockResolvedValueOnce(jsonResponse(routedTicket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teamHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    render(<AppRouter />)
+    expect(await screen.findByText('changed the assigned team')).toBeInTheDocument()
+    expect(screen.getByText('Technical → Billing')).toBeInTheDocument()
+    expect(screen.getByText('Billing')).toBeInTheDocument()
+  })
 })
 
 describe('ticket conversation', () => {
