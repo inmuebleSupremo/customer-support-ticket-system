@@ -15,6 +15,23 @@ function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 }
 
+type MockReply = { body: unknown; status?: number }
+type MockReplies = Record<string, MockReply | MockReply[]>
+
+function reply(body: unknown, status = 200): MockReply {
+  return { body, status }
+}
+
+function mockApiResponses(fetchMock: ReturnType<typeof vi.fn>, responses: MockReplies) {
+  const queues = new Map(Object.entries(responses).map(([request, response]) => [request, Array.isArray(response) ? [...response] : [response]]))
+  fetchMock.mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const request = `${init?.method?.toUpperCase() ?? 'GET'} ${url}`
+    const response = queues.get(request)?.shift()
+    return Promise.resolve(response ? jsonResponse(response.body, response.status) : jsonResponse({ detail: `Unexpected request: ${request}` }, 500))
+  })
+}
+
 describe('identity flow', () => {
   const fetchMock = vi.fn()
 
@@ -515,23 +532,44 @@ describe('ticket assignment and lifecycle controls', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
-  function restoreSession(user: CurrentUser = agentUser) {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(user))
+  function mockTicketDetailRequests({
+    user = agentUser,
+    ticketResponses = [ticket],
+    historyResponses = [createdHistory],
+    commentResponses = [emptyComments],
+    agentResponses = [agents],
+    teamResponses = [teams],
+    requestResponses = {}
+  }: {
+    user?: CurrentUser
+    ticketResponses?: unknown[]
+    historyResponses?: unknown[]
+    commentResponses?: unknown[]
+    agentResponses?: unknown[]
+    teamResponses?: unknown[]
+    requestResponses?: MockReplies
+  } = {}) {
+    mockApiResponses(fetchMock, {
+      'GET /api/v1/auth/csrf': reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }),
+      'GET /api/v1/users/me': reply(user),
+      'GET /api/v1/tickets/42': ticketResponses.map(response => reply(response)),
+      'GET /api/v1/tickets/42/history': historyResponses.map(response => reply(response)),
+      'GET /api/v1/tickets/42/comments?page=0&size=50': commentResponses.map(response => reply(response)),
+      'GET /api/v1/agents': agentResponses.map(response => reply(response)),
+      'GET /api/v1/teams': teamResponses.map(response => reply(response)),
+      ...requestResponses
+    })
   }
 
   it('shows staff assignment and only valid status actions, then submits through the API layer', async () => {
-    restoreSession()
-    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', status: 'IN_PROGRESS', resolvedAt: null, closedAt: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, status: 'IN_PROGRESS', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    mockTicketDetailRequests({
+      ticketResponses: [ticket, { ...ticket, status: 'IN_PROGRESS', version: 1 }],
+      historyResponses: [createdHistory, createdHistory],
+      requestResponses: {
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' })],
+        'PATCH /api/v1/tickets/42/status': reply({ id: 42, reference: 'SUP-42', status: 'IN_PROGRESS', resolvedAt: null, closedAt: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 })
+      }
+    })
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Ticket actions' })).toBeInTheDocument()
     expect(screen.getByLabelText('Assigned agent')).toBeInTheDocument()
@@ -542,17 +580,14 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('assigns a ticket from the active-agent lookup through the shared API layer', async () => {
-    restoreSession()
-    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedAgent: { id: 8, displayName: 'Maria Garcia' }, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' }, version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    mockTicketDetailRequests({
+      ticketResponses: [ticket, { ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' }, version: 1 }],
+      historyResponses: [createdHistory, createdHistory],
+      requestResponses: {
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' })],
+        'PATCH /api/v1/tickets/42/assignee': reply({ id: 42, reference: 'SUP-42', assignedAgent: { id: 8, displayName: 'Maria Garcia' }, updatedAt: '2026-09-29T10:01:00Z', version: 1 })
+      }
+    })
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket actions' })
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
@@ -563,13 +598,8 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('loads only the assigned team\'s active agents and permits an eligible agent to assign themselves', async () => {
-    restoreSession()
     const routedTicket = { ...ticket, assignedTeam: { id: 3, name: 'Billing' } }
-    fetchMock.mockResolvedValueOnce(jsonResponse(routedTicket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    mockTicketDetailRequests({ ticketResponses: [routedTicket], requestResponses: { 'GET /api/v1/agents?teamId=3': reply(agents) } })
     render(<AppRouter />)
     expect(await screen.findByLabelText('Assigned agent')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents?teamId=3', expect.objectContaining({ credentials: 'include' }))
@@ -578,14 +608,9 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('disables Assign to me when the current agent is not eligible for the assigned team', async () => {
-    restoreSession()
     const routedTicket = { ...ticket, assignedTeam: { id: 3, name: 'Billing' } }
     const teamAgents = [{ id: 9, displayName: 'Other Agent', email: 'other@example.com' }]
-    fetchMock.mockResolvedValueOnce(jsonResponse(routedTicket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teamAgents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    mockTicketDetailRequests({ ticketResponses: [routedTicket], requestResponses: { 'GET /api/v1/agents?teamId=3': reply(teamAgents) } })
     render(<AppRouter />)
     expect(await screen.findByRole('option', { name: 'Other Agent' })).toBeInTheDocument()
     expect(screen.queryByRole('option', { name: 'Maria Garcia' })).not.toBeInTheDocument()
@@ -593,15 +618,15 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('surfaces ASSIGNEE_NOT_IN_TEAM through the existing mutation feedback', async () => {
-    restoreSession()
     const routedTicket = { ...ticket, assignedTeam: { id: 3, name: 'Billing' } }
-    fetchMock.mockResolvedValueOnce(jsonResponse(routedTicket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'assignment-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'ASSIGNEE_NOT_IN_TEAM', detail: 'The selected agent is not a member of the assigned team.' }, 409))
+    mockTicketDetailRequests({
+      ticketResponses: [routedTicket],
+      requestResponses: {
+        'GET /api/v1/agents?teamId=3': reply(agents),
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'assignment-token' })],
+        'PATCH /api/v1/tickets/42/assignee': reply({ code: 'ASSIGNEE_NOT_IN_TEAM', detail: 'The selected agent is not a member of the assigned team.' }, 409)
+      }
+    })
     render(<AppRouter />)
     await screen.findByLabelText('Assigned agent')
     fireEvent.change(screen.getByLabelText('Assigned agent'), { target: { value: '8' } })
@@ -610,16 +635,17 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('allows a customer to reopen only a resolved ticket and handles stale changes by reloading', async () => {
-    restoreSession(authenticatedUser)
     const resolvedTicket = { ...ticket, status: 'RESOLVED' as const, resolvedAt: '2026-09-29T10:00:00Z', version: 2 }
-    fetchMock.mockResolvedValueOnce(jsonResponse(resolvedTicket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...resolvedTicket, version: 3 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    mockTicketDetailRequests({
+      user: authenticatedUser,
+      ticketResponses: [resolvedTicket, { ...resolvedTicket, version: 3 }],
+      historyResponses: [createdHistory, createdHistory],
+      commentResponses: [emptyComments, emptyComments],
+      requestResponses: {
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' })],
+        'PATCH /api/v1/tickets/42/status': reply({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409)
+      }
+    })
     render(<AppRouter />)
     expect(await screen.findByRole('button', { name: 'Change status to In Progress' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Assigned agent')).not.toBeInTheDocument()
@@ -628,12 +654,7 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('hides all mutation controls for a closed ticket', async () => {
-    restoreSession()
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, status: 'CLOSED' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    mockTicketDetailRequests({ ticketResponses: [{ ...ticket, status: 'CLOSED' }] })
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ticket actions' })).not.toBeInTheDocument()
@@ -642,10 +663,7 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('shows Unrouted when a ticket has no assigned team', async () => {
-    restoreSession(authenticatedUser)
-    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    mockTicketDetailRequests({ user: authenticatedUser })
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Ticket details' })).toBeInTheDocument()
     expect(screen.getByText('Assigned team')).toBeInTheDocument()
@@ -653,14 +671,9 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('shows the assigned team and its human-readable activity change', async () => {
-    restoreSession()
     const routedTicket = { ...ticket, assignedTeam: { id: 3, name: 'Billing' } }
     const teamHistory = [{ id: 701, eventType: 'TEAM_CHANGED' as const, fieldName: 'assignedTeam', oldValue: '2', newValue: '3', oldDisplayValue: 'Technical', newDisplayValue: 'Billing', actor: { id: 8, displayName: 'Maria Garcia' }, createdAt: '2026-09-29T10:01:00Z' }]
-    fetchMock.mockResolvedValueOnce(jsonResponse(routedTicket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teamHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    mockTicketDetailRequests({ ticketResponses: [routedTicket], historyResponses: [teamHistory], requestResponses: { 'GET /api/v1/agents?teamId=3': reply(agents) } })
     render(<AppRouter />)
     expect(await screen.findByText('changed the assigned team')).toBeInTheDocument()
     expect(screen.getByText('Technical → Billing')).toBeInTheDocument()
@@ -668,24 +681,17 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('routes a ticket to an active team and can clear the route', async () => {
-    restoreSession()
-    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedTeam: { id: 3, name: 'Billing' }, assignedAgent: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedTeam: { id: 3, name: 'Billing' }, version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-clear-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedTeam: null, assignedAgent: null, updatedAt: '2026-09-29T10:02:00Z', version: 2 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedTeam: null, version: 2 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    mockTicketDetailRequests({
+      ticketResponses: [ticket, { ...ticket, assignedTeam: { id: 3, name: 'Billing' }, version: 1 }, { ...ticket, assignedTeam: null, version: 2 }],
+      historyResponses: [createdHistory, createdHistory, createdHistory],
+      agentResponses: [agents, agents],
+      teamResponses: [teams, teams, teams],
+      requestResponses: {
+        'GET /api/v1/agents?teamId=3': reply(agents),
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-clear-token' })],
+        'PATCH /api/v1/tickets/42/team': [reply({ id: 42, reference: 'SUP-42', assignedTeam: { id: 3, name: 'Billing' }, assignedAgent: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 }), reply({ id: 42, reference: 'SUP-42', assignedTeam: null, assignedAgent: null, updatedAt: '2026-09-29T10:02:00Z', version: 2 })]
+      }
+    })
     render(<AppRouter />)
     expect(await screen.findByLabelText('Assigned team')).toHaveValue('')
     expect(await screen.findByRole('option', { name: 'Billing' })).toBeInTheDocument()
@@ -701,17 +707,16 @@ describe('ticket assignment and lifecycle controls', () => {
   })
 
   it('reloads the ticket after a stale team-route response', async () => {
-    restoreSession()
     const technicalTicket = { ...ticket, assignedTeam: { id: 4, name: 'Technical' } }
-    fetchMock.mockResolvedValueOnce(jsonResponse(technicalTicket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...technicalTicket, version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    mockTicketDetailRequests({
+      ticketResponses: [technicalTicket, { ...technicalTicket, version: 1 }],
+      historyResponses: [createdHistory, createdHistory],
+      requestResponses: {
+        'GET /api/v1/agents?teamId=4': reply(agents),
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' })],
+        'PATCH /api/v1/tickets/42/team': reply({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409)
+      }
+    })
     render(<AppRouter />)
     await waitFor(() => expect(screen.getByLabelText('Assigned team')).toHaveValue('4'))
     fireEvent.change(screen.getByLabelText('Assigned team'), { target: { value: '3' } })
@@ -804,26 +809,40 @@ describe('ticket priority controls', () => {
 
   afterEach(() => vi.unstubAllGlobals())
 
-  function restoreSession(user: CurrentUser) {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(user))
-  }
-
-  function loadStaffTicket(ticketResponse = ticket) {
-    fetchMock.mockResolvedValueOnce(jsonResponse(ticketResponse))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
-    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
-    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+  function mockTicketDetailRequests({
+    user = agentUser,
+    ticketResponses = [ticket],
+    historyResponses = [createdHistory],
+    commentResponses = [emptyComments],
+    requestResponses = {}
+  }: {
+    user?: CurrentUser
+    ticketResponses?: unknown[]
+    historyResponses?: unknown[]
+    commentResponses?: unknown[]
+    requestResponses?: MockReplies
+  } = {}) {
+    mockApiResponses(fetchMock, {
+      'GET /api/v1/auth/csrf': reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }),
+      'GET /api/v1/users/me': reply(user),
+      'GET /api/v1/tickets/42': ticketResponses.map(response => reply(response)),
+      'GET /api/v1/tickets/42/history': historyResponses.map(response => reply(response)),
+      'GET /api/v1/tickets/42/comments?page=0&size=50': commentResponses.map(response => reply(response)),
+      'GET /api/v1/agents': reply(agents),
+      'GET /api/v1/teams': reply(teams),
+      ...requestResponses
+    })
   }
 
   it('shows the current priority and lets an agent change it through the shared API layer', async () => {
-    restoreSession(agentUser)
-    loadStaffTicket()
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'priority-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', priority: 'URGENT', updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, priority: 'URGENT', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    mockTicketDetailRequests({
+      ticketResponses: [ticket, { ...ticket, priority: 'URGENT', version: 1 }],
+      historyResponses: [createdHistory, createdHistory],
+      requestResponses: {
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'priority-token' })],
+        'PATCH /api/v1/tickets/42/priority': reply({ id: 42, reference: 'SUP-42', priority: 'URGENT', updatedAt: '2026-09-29T10:01:00Z', version: 1 })
+      }
+    })
     render(<AppRouter />)
     expect(await screen.findAllByText('Medium')).not.toHaveLength(0)
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'URGENT' } })
@@ -833,29 +852,27 @@ describe('ticket priority controls', () => {
   })
 
   it('allows an administrator but never exposes priority mutation to customers or closed tickets', async () => {
-    restoreSession({ ...agentUser, role: 'ADMIN' })
-    loadStaffTicket()
+    mockTicketDetailRequests({ user: { ...agentUser, role: 'ADMIN' } })
     render(<AppRouter />)
     expect(await screen.findByLabelText('Priority')).toBeInTheDocument()
   })
 
   it('keeps customer and closed-ticket priority displays read-only', async () => {
-    restoreSession(authenticatedUser)
-    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
-    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    mockTicketDetailRequests({ user: authenticatedUser })
     render(<AppRouter />)
     expect(await screen.findByText('Medium')).toBeInTheDocument()
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
   })
 
   it('reloads after a stale priority response and displays API errors', async () => {
-    restoreSession(agentUser)
-    loadStaffTicket()
-    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'priority-token' }))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409))
-    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, priority: 'HIGH', version: 1 }))
-    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    mockTicketDetailRequests({
+      ticketResponses: [ticket, { ...ticket, priority: 'HIGH', version: 1 }],
+      historyResponses: [createdHistory, createdHistory],
+      requestResponses: {
+        'GET /api/v1/auth/csrf': [reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'token' }), reply({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'priority-token' })],
+        'PATCH /api/v1/tickets/42/priority': reply({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409)
+      }
+    })
     render(<AppRouter />)
     await screen.findByLabelText('Priority')
     fireEvent.change(screen.getByLabelText('Priority'), { target: { value: 'URGENT' } })
