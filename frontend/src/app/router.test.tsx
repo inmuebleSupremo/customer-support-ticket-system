@@ -480,6 +480,7 @@ describe('agent ticket queue', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     render(<AppRouter />)
     await screen.findByRole('heading', { name: 'Ticket queue' })
     await screen.findByRole('table')
@@ -501,6 +502,7 @@ describe('agent ticket queue', () => {
 describe('ticket assignment and lifecycle controls', () => {
   const fetchMock = vi.fn()
   const agents = [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com' }]
+  const teams = [{ id: 3, name: 'Billing' }, { id: 4, name: 'Technical' }]
 
   beforeEach(() => {
     window.history.replaceState({}, '', '/tickets/42')
@@ -521,6 +523,7 @@ describe('ticket assignment and lifecycle controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', status: 'IN_PROGRESS', resolvedAt: null, closedAt: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, status: 'IN_PROGRESS', version: 1 }))
@@ -541,6 +544,7 @@ describe('ticket assignment and lifecycle controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'change-token' }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedAgent: { id: 8, displayName: 'Maria Garcia' }, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
     fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedAgent: { id: 8, displayName: 'Maria Garcia' }, version: 1 }))
@@ -577,10 +581,12 @@ describe('ticket assignment and lifecycle controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Ticket actions' })).not.toBeInTheDocument()
     expect(screen.queryByLabelText('Priority')).not.toBeInTheDocument()
+    expect(screen.queryByLabelText('Assigned team')).not.toBeInTheDocument()
   })
 
   it('shows Unrouted when a ticket has no assigned team', async () => {
@@ -602,10 +608,59 @@ describe('ticket assignment and lifecycle controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(teamHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
     render(<AppRouter />)
     expect(await screen.findByText('changed the assigned team')).toBeInTheDocument()
     expect(screen.getByText('Technical → Billing')).toBeInTheDocument()
-    expect(screen.getByText('Billing')).toBeInTheDocument()
+    expect(screen.getAllByText('Billing')).not.toHaveLength(0)
+  })
+
+  it('routes a ticket to an active team and can clear the route', async () => {
+    restoreSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(ticket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedTeam: { id: 3, name: 'Billing' }, assignedAgent: null, updatedAt: '2026-09-29T10:01:00Z', version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedTeam: { id: 3, name: 'Billing' }, version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-clear-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ id: 42, reference: 'SUP-42', assignedTeam: null, assignedAgent: null, updatedAt: '2026-09-29T10:02:00Z', version: 2 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...ticket, assignedTeam: null, version: 2 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    render(<AppRouter />)
+    expect(await screen.findByLabelText('Assigned team')).toHaveValue('')
+    expect(screen.getByRole('option', { name: 'Billing' })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Assigned team'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update team' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/team', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ teamId: 3, version: 0 }) })))
+    await waitFor(() => expect(screen.getByLabelText('Assigned team')).toHaveValue('3'))
+    fireEvent.change(screen.getByLabelText('Assigned team'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update team' }))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/tickets/42/team', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ teamId: null, version: 1 }) })))
+    await waitFor(() => expect(screen.getByLabelText('Assigned team')).toHaveValue(''))
+  })
+
+  it('reloads the ticket after a stale team-route response', async () => {
+    restoreSession()
+    const technicalTicket = { ...ticket, assignedTeam: { id: 4, name: 'Technical' } }
+    fetchMock.mockResolvedValueOnce(jsonResponse(technicalTicket))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
+    fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ headerName: 'X-XSRF-TOKEN', parameterName: '_csrf', token: 'team-token' }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: 'STALE_RESOURCE', detail: 'Ticket has changed' }, 409))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ ...technicalTicket, version: 1 }))
+    fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
+    render(<AppRouter />)
+    expect(await screen.findByLabelText('Assigned team')).toHaveValue('4')
+    fireEvent.change(screen.getByLabelText('Assigned team'), { target: { value: '3' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Update team' }))
+    expect(await screen.findByText('This ticket changed while you were viewing it. The latest version has been loaded.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Assigned team')).toHaveValue('4')
   })
 })
 
@@ -682,6 +737,7 @@ describe('ticket conversation', () => {
 describe('ticket priority controls', () => {
   const fetchMock = vi.fn()
   const agents = [{ id: 8, displayName: 'Maria Garcia', email: 'maria@example.com' }]
+  const teams = [{ id: 3, name: 'Billing' }]
 
   beforeEach(() => {
     window.history.replaceState({}, '', '/tickets/42')
@@ -701,6 +757,7 @@ describe('ticket priority controls', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     fetchMock.mockResolvedValueOnce(jsonResponse(agents))
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
   }
 
   it('shows the current priority and lets an agent change it through the shared API layer', async () => {

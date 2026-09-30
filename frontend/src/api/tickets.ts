@@ -145,6 +145,13 @@ export function changeTicketAssignee(id: number, agentId: number | null, version
   }, true)
 }
 
+export function changeTicketTeam(id: number, teamId: number | null, version: number) {
+  return apiRequest(`/tickets/${id}/team`, {
+    method: 'PATCH',
+    body: JSON.stringify({ teamId, version })
+  }, true)
+}
+
 export function changeTicketStatus(id: number, status: TicketDetail['status'], version: number) {
   return apiRequest(`/tickets/${id}/status`, {
     method: 'PATCH',
