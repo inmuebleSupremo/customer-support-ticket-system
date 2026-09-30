@@ -1,5 +1,6 @@
 package com.resolvedesk.teams.api;
 
+import com.resolvedesk.auth.application.AuthenticatedUser;
 import com.resolvedesk.teams.application.TeamAdministrationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
@@ -13,7 +14,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 
 import java.util.List;
 
@@ -27,8 +30,11 @@ public class TeamController {
     }
 
     @GetMapping
-    public List<TeamSummaryResponse> listActiveTeams() {
-        return teamAdministrationService.listActiveTeams();
+    public List<TeamSummaryResponse> listTeams(
+            @AuthenticationPrincipal AuthenticatedUser authenticatedUser,
+            @RequestParam(defaultValue = "false") boolean includeInactive
+    ) {
+        return teamAdministrationService.listTeams(authenticatedUser.user(), includeInactive);
     }
 
     @GetMapping("/{id}")

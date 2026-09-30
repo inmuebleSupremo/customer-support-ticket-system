@@ -1,4 +1,4 @@
 package com.resolvedesk.teams.api;
 
-public record TeamSummaryResponse(Long id, String name) {
+public record TeamSummaryResponse(Long id, String name, boolean active) {
 }

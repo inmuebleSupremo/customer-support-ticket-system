@@ -69,7 +69,8 @@ class TeamAdministrationIntegrationTests {
         Team team = teamRepository.findAll().getFirst();
 
         mockMvc.perform(get("/api/v1/teams").with(authentication(agent)))
-                .andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("Technical Support"));
+                .andExpect(status().isOk()).andExpect(jsonPath("$[0].name").value("Technical Support"))
+                .andExpect(jsonPath("$[0].active").value(true));
         mockMvc.perform(get("/api/v1/teams/{id}", team.getId()).with(authentication(agent)))
                 .andExpect(status().isForbidden());
         mockMvc.perform(get("/api/v1/teams/{id}", team.getId()).with(authentication(administrator)))
@@ -78,6 +79,37 @@ class TeamAdministrationIntegrationTests {
                 .andExpect(status().isForbidden());
         mockMvc.perform(post("/api/v1/teams").with(authentication(agent)).with(csrf())
                         .contentType(MediaType.APPLICATION_JSON).content("{\"name\":\"Billing\"}"))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void teamListingDefaultsToActiveTeamsAndLetsOnlyAdministratorsIncludeInactiveTeams() throws Exception {
+        User administrator = persistedUser("admin@example.com", UserRole.ADMIN);
+        User agent = persistedUser("agent@example.com", UserRole.AGENT);
+        User customer = persistedUser("customer@example.com", UserRole.CUSTOMER);
+        Team activeTeam = teamRepository.saveAndFlush(Team.create("Active Team"));
+        Team inactiveTeam = teamRepository.saveAndFlush(Team.create("Inactive Team"));
+        inactiveTeam.changeActive(false);
+        teamRepository.saveAndFlush(inactiveTeam);
+
+        mockMvc.perform(get("/api/v1/teams").with(authentication(agent)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].id").value(activeTeam.getId()))
+                .andExpect(jsonPath("$[0].name").value("Active Team"))
+                .andExpect(jsonPath("$[0].active").value(true));
+        mockMvc.perform(get("/api/v1/teams").queryParam("includeInactive", "true").with(authentication(administrator)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].name").value("Active Team"))
+                .andExpect(jsonPath("$[0].active").value(true))
+                .andExpect(jsonPath("$[1].name").value("Inactive Team"))
+                .andExpect(jsonPath("$[1].active").value(false));
+        mockMvc.perform(get("/api/v1/teams").queryParam("includeInactive", "true").with(authentication(agent)))
+                .andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
+        mockMvc.perform(get("/api/v1/teams").with(authentication(customer)))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/v1/teams").queryParam("includeInactive", "true").with(authentication(customer)))
                 .andExpect(status().isForbidden());
     }
 
@@ -121,7 +153,9 @@ class TeamAdministrationIntegrationTests {
                 .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("INVALID_TEAM_MEMBER"));
         mockMvc.perform(get("/api/v1/users/me/teams").with(authentication(agent)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].id").value(activeTeam.getId()));
+                .andExpect(jsonPath("$[0].id").value(activeTeam.getId()))
+                .andExpect(jsonPath("$[0].name").value("Technical Support"))
+                .andExpect(jsonPath("$[0].active").value(true));
         mockMvc.perform(get("/api/v1/users/me/teams").with(authentication(customer)))
                 .andExpect(status().isForbidden());
     }

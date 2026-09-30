@@ -16,6 +16,8 @@ public interface TeamRepository extends JpaRepository<Team, Long> {
 
     List<Team> findByActiveTrueOrderByNameAsc();
 
+    List<Team> findAllByOrderByNameAsc();
+
     List<Team> findDistinctByMembersId(Long userId);
 
     List<Team> findDistinctByMembersIdAndActiveTrueOrderByNameAsc(Long userId);

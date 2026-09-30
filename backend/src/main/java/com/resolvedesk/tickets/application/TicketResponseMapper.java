@@ -68,7 +68,7 @@ public final class TicketResponseMapper {
     }
 
     private static TeamSummaryResponse toTeamSummary(Ticket ticket) {
-        return ticket.getAssignedTeam() == null ? null : new TeamSummaryResponse(ticket.getAssignedTeam().getId(), ticket.getAssignedTeam().getName());
+        return ticket.getAssignedTeam() == null ? null : new TeamSummaryResponse(ticket.getAssignedTeam().getId(), ticket.getAssignedTeam().getName(), ticket.getAssignedTeam().isActive());
     }
 
     public static TicketPriorityMutationResponse toPriorityMutation(Ticket ticket) {

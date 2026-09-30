@@ -13,7 +13,7 @@ public final class TeamResponseMapper {
     }
 
     public static TeamSummaryResponse toSummary(Team team) {
-        return new TeamSummaryResponse(team.getId(), team.getName());
+        return new TeamSummaryResponse(team.getId(), team.getName(), team.isActive());
     }
 
     public static TeamDetailResponse toDetail(Team team) {

@@ -14,6 +14,7 @@ import com.resolvedesk.users.domain.User;
 import com.resolvedesk.users.domain.UserRole;
 import com.resolvedesk.users.persistence.UserRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -39,8 +40,14 @@ public class TeamAdministrationService {
     }
 
     @Transactional(readOnly = true)
-    public List<TeamSummaryResponse> listActiveTeams() {
-        return teamRepository.findByActiveTrueOrderByNameAsc().stream().map(TeamResponseMapper::toSummary).toList();
+    public List<TeamSummaryResponse> listTeams(User actor, boolean includeInactive) {
+        if (includeInactive && actor.getRole() != UserRole.ADMIN) {
+            throw new AccessDeniedException("Only administrators may include inactive teams.");
+        }
+        List<Team> teams = includeInactive
+                ? teamRepository.findAllByOrderByNameAsc()
+                : teamRepository.findByActiveTrueOrderByNameAsc();
+        return teams.stream().map(TeamResponseMapper::toSummary).toList();
     }
 
     @Transactional(readOnly = true)
