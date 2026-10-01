@@ -55,4 +55,20 @@ button:disabled {
   .rd-validation-message {
     @apply mt-1 text-sm font-medium text-red-700;
   }
+
+  .rd-case-reference {
+    @apply font-mono text-xs font-bold tracking-[0.08em] text-sky-800;
+  }
+
+  .rd-meta-label {
+    @apply text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-slate-500;
+  }
+
+  .rd-filter-toggle {
+    @apply inline-flex min-h-10 items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 transition-colors hover:border-slate-300 hover:bg-white;
+  }
+
+  .rd-empty-assignment {
+    @apply inline-flex items-center gap-2 text-sm font-medium text-slate-500;
+  }
 }

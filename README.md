@@ -1,63 +1,101 @@
 # ResolveDesk
 
-ResolveDesk is a full-stack support ticket application built as a portfolio project. It gives customers a clear way to raise and follow support issues while giving agents and administrators a controlled operational workspace.
+ResolveDesk is a full-stack support-operations application built as a portfolio project with Java, Spring Boot, React, and TypeScript. It models the day-to-day workflow of receiving customer issues, triaging them in a shared queue, routing work to teams, assigning eligible agents, and retaining the conversation and audit trail with the ticket.
 
-## Problem and MVP
+It is an implemented application, not a frontend prototype: the React client communicates with a Spring Boot REST API backed by MySQL, with server-side authorization, schema migrations, and automated verification.
 
-Support requests often lose context when ownership, status, and customer communication live in separate places. ResolveDesk keeps the ticket, its immutable activity history, and its conversation together while enforcing role-appropriate access.
+## Product tour
 
-The implemented v2 release covers ticket intake, lifecycle management, and team-based support operations. It intentionally excludes notifications, attachments, SLA/reporting features, real-time updates, OAuth, and external integrations.
+### Support Queue — triage and ownership in one view
 
-## Key features
+Agents and administrators work from a global queue with server-side status, priority, assignee, team, and search filters. Tickets can be routed to a support team and assigned to an eligible member of that team.
 
-- Customer self-registration and session-based authentication with CSRF protection.
-- Customer ticket creation, private workspace, activity history, and conversation.
-- Agent and administrator global support queue with server-side status, priority, assignee, search, team, unrouted, and My Teams filters; sorting and pagination remain server-side.
-- Team-based ticket routing and team-aware individual assignment, with immutable routing and assignment history.
-- Optimistic locking for ticket mutations, eligibility-changing concurrency protection, and terminal, read-only closed tickets.
-- Administrator user search/filtering, role management, activation controls, final-admin protection, and Team Administration.
-- Team Administration for creating, renaming, activating/deactivating, and managing AGENT membership in support teams.
+![Support Queue](docs/screenshots/01-support-queue.png)
 
-## Roles
+### Ticket Workspace — conversation alongside the operational record
 
-| Role | Capabilities |
+Each ticket brings together the customer request, current workflow state, routing and assignment, immutable activity history, and customer-agent conversation.
+
+![Ticket Workspace](docs/screenshots/02-ticket-workspace.png)
+
+### Team Administration — maintain routing eligibility
+
+Administrators create and manage operational teams, control active status, and maintain current AGENT memberships without bypassing ticket-assignment safeguards.
+
+![Team Administration](docs/screenshots/03-team-administration.png)
+
+### Customer Dashboard — a focused customer workspace
+
+Customers can create and follow only their own support requests, review activity and messages, and reopen a resolved issue when further work is needed.
+
+![Customer Dashboard](docs/screenshots/04-customer-dashboard.png)
+
+## What it demonstrates
+
+- Role-aware support workflows for CUSTOMER, AGENT, and ADMIN users.
+- A global support queue with server-side filtering, pagination, sorting, routing, and team-aware assignment.
+- Ticket lifecycle management with optimistic locking and terminal, read-only CLOSED tickets.
+- Immutable ticket-history events and comment records that preserve operational context.
+- Administrator controls for user status/roles and support-team membership, guarded by workflow eligibility rules.
+- A React/TypeScript client backed by a DTO-based Spring Boot REST API rather than mocked application state.
+
+## Technology
+
+| Area | Tools |
 | --- | --- |
-| CUSTOMER | Registers, creates tickets, sees only owned tickets, comments, and reopens resolved tickets. |
-| AGENT | Views the global support queue, routes tickets to active teams, assigns eligible active agents, changes status/priority, and comments. |
-| ADMIN | Has queue access plus user and team administration. ADMIN users are not ticket assignees. |
+| Backend | Java 21, Spring Boot, Spring Security, Spring Data JPA, Bean Validation, Flyway, MySQL, OpenAPI |
+| Frontend | React, TypeScript, React Router, Tailwind CSS, Vite |
+| Testing | JUnit, Mockito, Spring Boot Test, Testcontainers, Vitest, Testing Library |
+| Delivery | Docker Compose, Nginx, GitHub Actions |
 
-Only active AGENT users can receive assignments. When a ticket has an assigned team, its assignee must also be a current member of that team. Inactive accounts cannot authenticate.
+## Engineering highlights
 
-## Technology stack
+### Security and API boundary
 
-- Backend: Java 21, Spring Boot, Spring Web, Spring Security, Spring Data JPA, Bean Validation, Flyway, MySQL, springdoc/OpenAPI.
-- Frontend: React, TypeScript, React Router, Tailwind CSS, Vite.
-- Testing: JUnit, Spring Boot Test, Spring Security Test, H2/Flyway integration tests, real MySQL 8 Testcontainers migration tests, Vitest, Testing Library.
-- Delivery: Docker Compose, Nginx, GitHub Actions.
+Authentication uses server-managed sessions with CSRF protection. Authorization is enforced by the backend: customers can access only their own tickets, while staff access is role-based. Request and response DTOs define the HTTP boundary; JPA entities are not exposed by the REST API. Errors use a consistent Problem Details-style response with stable application codes.
 
-## Architecture
+### Workflow, routing, and auditability
 
-The React client talks to the Spring Boot REST API. In Docker Compose, Nginx serves the static client and proxies same-origin `/api` requests to the backend; the backend owns all business authorization and persists to MySQL. Flyway is the sole schema owner and Hibernate validates rather than creates or updates production tables.
+New tickets start OPEN and progress through `OPEN → IN_PROGRESS → RESOLVED → CLOSED`; customers may reopen only their own resolved tickets. Narrow, versioned mutation requests prevent stale updates from silently overwriting newer work. Routing and assignment are separate: a routed ticket can be team-only, and an assigned agent must be active, have the AGENT role, and belong to its team when one is set.
 
-The backend is organized by feature (`auth`, `users`, `teams`, `tickets`, `tickets/comments`, and `tickets/history`). Controllers accept/return DTOs and delegate to services; services enforce domain and authorization rules; repositories execute persistence queries. See [architecture.md](docs/architecture.md) for the implemented design.
+Assignment, routing, priority, and lifecycle changes write immutable ticket-history events transactionally. Eligibility-changing operations use database locking around relevant users and teams, preventing concurrent administration changes from leaving an invalid assignment or team membership relationship.
 
-## Ticket lifecycle
+### Data and verification
 
-```text
-OPEN → IN_PROGRESS → RESOLVED → CLOSED
-          ↑              │
-          └──────────────┘
+Flyway owns the schema, while Hibernate validates it rather than creating or updating it in production. The backend test suite covers workflow, authorization, comments, team operations, and concurrency safeguards. Focused Testcontainers coverage verifies Flyway migrations and Hibernate schema validation against MySQL 8, including representative V4-to-V7 upgrades.
+
+## Run locally
+
+Docker Compose is the simplest local setup. Copy the environment template, replace its placeholder values, and configure the bootstrap administrator values before starting the stack:
+
+```powershell
+Copy-Item .env.example .env
+# Edit the local, ignored .env file.
+docker compose up --build
 ```
 
-Customers may reopen only a resolved ticket to `IN_PROGRESS`. CLOSED is terminal: status, priority, assignment, and comments cannot change. Ticket creation, assignment, status, and priority changes create immutable history entries; comments are themselves immutable audit records.
+The frontend is available at `http://localhost:5173` and the backend at `http://localhost:8080` by default. Compose starts MySQL, runs Flyway migrations through the application startup, and serves the frontend through Nginx.
 
-## Local setup
+For local frontend development, install dependencies and start Vite:
 
-Prerequisites for non-Docker development are Java 21, Maven, Node.js 22, and MySQL 8+. Copy `.env.example` to `.env`, replace the placeholder credentials, and expose those values in your shell before starting the backend directly. `.env` is ignored by Git and must remain local. The frontend uses the API base configured by `VITE_API_BASE_URL`; leave it blank when using the Compose proxy.
+```powershell
+npm --prefix frontend ci
+npm --prefix frontend run dev
+```
 
-Run the verified commands from the repository root:
+Non-Docker backend development requires Java 21, Maven, Node.js 22, and MySQL 8, with the required database and bootstrap-administrator environment variables available to the process.
 
-```bash
+## Optional demo dataset
+
+For repeatable portfolio screenshots and local exploration, the optional [demo-data script](scripts/seed-demo-data.ps1) creates a fictional dataset through the real ResolveDesk HTTP API. See [demo-data setup and safety notes](docs/demo-data.md) for usage, accounts, and safeguards.
+
+The documented `docker compose down -v` reset permanently removes the local MySQL volume. Use it only when intentionally discarding local database data.
+
+## Testing and verification
+
+Run these commands from the repository root:
+
+```powershell
 mvn -f backend/pom.xml test
 mvn -f backend/pom.xml package
 npm --prefix frontend run typecheck
@@ -65,74 +103,15 @@ npm --prefix frontend test
 npm --prefix frontend run build
 ```
 
-For local frontend development, install dependencies with `npm --prefix frontend ci` and run `npm --prefix frontend run dev`.
+GitHub Actions runs the backend tests/package and frontend type check, tests, and production build on pushes and pull requests.
 
-## Docker
+## Documentation
 
-The normal local startup flow is intentionally explicit:
+- [Architecture overview](docs/architecture.md)
+- [REST API contract](docs/003-REST-api-contract.txt) and [team-based API additions](docs/007-v2-rest-api-addendum.md)
+- [Team-based support-operations decision](docs/decisions/002-team-based-support-operations.md)
+- [Demo dataset workflow](docs/demo-data.md)
 
-```bash
-# macOS/Linux
-cp .env.example .env
-```
+When the local stack is running, the OpenAPI document is available at `http://localhost:8080/api-docs` and Swagger UI at `http://localhost:8080/swagger-ui`.
 
-```powershell
-# Windows PowerShell
-Copy-Item .env.example .env
-```
-
-Edit `.env`: replace every `change-me` password and set the bootstrap-admin values for a new database. Then run:
-
-```bash
-docker compose config
-docker compose up --build
-```
-
-Compose reads `.env` automatically. It now fails during configuration if the MySQL database name, application username/password, or MySQL root password is missing, rather than passing blank values to MySQL or Spring Boot. The application datasource always uses `RESOLVEDESK_DB_USERNAME` and `RESOLVEDESK_DB_PASSWORD`; it does not use the MySQL root account.
-
-The frontend is available at `http://localhost:5173` by default and the backend at `http://localhost:8080`. Compose starts MySQL first, waits for its health check, then starts the backend; Flyway applies V1–V7 when the database is empty.
-
-MySQL initialization values are used only when the named Docker volume is first created. To preserve existing local data, keep the same database credentials and use `docker compose up --build`. If the existing volume was initialized with different credentials, either restore the original values in `.env` or intentionally reset local development data with:
-
-```bash
-docker compose down -v
-docker compose up --build
-```
-
-`docker compose down -v` permanently removes the local ResolveDesk MySQL data volume; it is never required for normal startup and should only be used when discarding local development data is intended.
-
-## Environment configuration
-
-`.env.example` documents all local settings: MySQL database/name/ports, backend credentials and JDBC URL, environment-provided bootstrap-admin values, local ports, and the frontend API base URL. It contains placeholders only; copy it to the ignored `.env` file before using Docker Compose. There is no public administrator-creation endpoint and no committed credential.
-
-## API and OpenAPI
-
-The REST API is rooted at `/api/v1`. The generated OpenAPI document is available at `/api-docs`, and Swagger UI is available at `/swagger-ui`. The historical v1 API contract is [003-REST-api-contract.txt](docs/003-REST-api-contract.txt); implemented team-based additions are recorded in the [v2 REST API addendum](docs/007-v2-rest-api-addendum.md). API behavior, request/response DTOs, status codes, and Problem Details errors are defined by the numbered specification documents in `docs/`.
-
-## Testing strategy
-
-Backend integration tests cover authentication, Flyway validation, customer ownership concealment, queue queries, routing, team-aware assignment, membership and administration safeguards, concurrency invariants, comments, and the complete workflow. Focused Testcontainers tests run Flyway V1–V7 against MySQL 8, including a representative V4-to-V7 upgrade and Hibernate schema validation. Frontend tests cover identity, protected routes, customer workspace, the agent queue and its team filters, ticket workflows, conversation, priority, user administration, and team administration. GitHub Actions runs all backend and frontend verification commands on pushes and pull requests.
-
-## Project structure
-
-```text
-backend/                  Spring Boot API, Flyway migrations, backend tests
-frontend/                 React application, API clients, component tests
-docs/                     Authoritative specifications, decisions, architecture notes
-.github/workflows/        Continuous integration
-docker-compose.yaml       MySQL + backend + frontend local stack
-```
-
-## Important engineering decisions
-
-- Session authentication remains server-authoritative; actor and ownership data are never taken from client input.
-- JPA entities never cross the REST boundary; DTOs define the API.
-- Flyway controls schema evolution; production Hibernate DDL mode is `validate`.
-- Ticket workflow mutations are transactional, version-aware, and retain required audit history; routing records `TEAM_CHANGED` and atomically clears an incompatible assignee.
-- Tickets, comments, and history are never hard-deleted in the MVP.
-- The active final ADMIN cannot be demoted or deactivated. An AGENT with any non-CLOSED assignment cannot be demoted or deactivated; role changes also remove team memberships.
-- A team cannot be deactivated while it owns a non-CLOSED ticket, and a member cannot be removed while they own a non-CLOSED ticket routed to that team. Pessimistic eligibility locks serialize these checks with routing and assignment.
-
-## Future enhancements
-
-Potential post-MVP work includes notifications, attachments, SLAs/reporting, real-time updates, and integrations. These are deliberately outside the implemented scope.
+The project intentionally keeps notifications, attachments, SLAs, reporting, real-time updates, OAuth, and external integrations out of scope so the implemented support workflow remains focused.
