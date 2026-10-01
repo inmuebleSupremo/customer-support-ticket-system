@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import type { CurrentUser, UserRole } from '../api/auth'
 import { Button } from '../components/ui/Button'
 import { RoleBadge } from '../components/ui/Badges'
+import { trapFocusWithin, useScrollLock } from '../components/ui/overlay'
 
 interface NavigationItem {
   label: string
@@ -42,14 +43,12 @@ export function AppSidebar({ onLogout, user }: { onLogout: () => void; user: Cur
   return <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-slate-200 bg-white lg:flex"><div className="px-5 py-5"><Brand /></div><div className="flex-1 px-3 py-2"><NavigationLinks role={user.role} /></div><div className="border-t border-slate-200 p-4"><UserIdentity user={user} /><Button className="mt-4 w-full justify-start" variant="quiet" onClick={onLogout}>Log out {user.firstName}</Button></div></aside>
 }
 
-function focusableElements(container: HTMLElement) {
-  return Array.from(container.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])')).filter(element => !element.hasAttribute('disabled'))
-}
-
 export function MobileNavigation({ onLogout, user }: { onLogout: () => void; user: CurrentUser }) {
   const [open, setOpen] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const drawerRef = useRef<HTMLElement>(null)
+
+  useScrollLock(open)
 
   function closeMenu() {
     setOpen(false)
@@ -67,18 +66,7 @@ export function MobileNavigation({ onLogout, user }: { onLogout: () => void; use
   }, [open])
 
   function trapFocus(event: React.KeyboardEvent<HTMLElement>) {
-    if (event.key !== 'Tab' || !drawerRef.current) return
-    const elements = focusableElements(drawerRef.current)
-    if (elements.length === 0) return
-    const first = elements[0]
-    const last = elements[elements.length - 1]
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault()
-      last.focus()
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault()
-      first.focus()
-    }
+    trapFocusWithin(event, drawerRef.current)
   }
 
   return <header className="sticky top-0 z-20 border-b border-slate-200 bg-white lg:hidden"><div className="flex min-h-16 items-center justify-between px-4"><Brand /><button ref={menuButtonRef} type="button" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-slate-300 text-sm font-semibold text-slate-800 hover:bg-slate-50" aria-label="Open navigation menu" aria-expanded={open} aria-controls="mobile-navigation" onClick={() => setOpen(true)}>Menu</button></div>{open && <><button type="button" className="fixed inset-0 z-30 cursor-default bg-slate-950/20" aria-label="Close navigation menu" onClick={closeMenu} /><aside id="mobile-navigation" ref={drawerRef} role="dialog" aria-modal="true" aria-label="Navigation menu" tabIndex={-1} onKeyDown={trapFocus} className="fixed inset-y-0 left-0 z-40 flex w-80 max-w-[calc(100vw-3rem)] flex-col border-r border-slate-200 bg-white shadow-lg"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-3"><Brand onNavigate={closeMenu} /><Button variant="quiet" aria-label="Close navigation menu" onClick={closeMenu}>Close</Button></div><div className="flex-1 px-3 py-4"><NavigationLinks role={user.role} onNavigate={closeMenu} /></div><div className="border-t border-slate-200 p-4"><UserIdentity user={user} /><Button className="mt-4 w-full justify-start" variant="quiet" onClick={() => { onLogout(); closeMenu() }}>Log out {user.firstName}</Button></div></aside></>}</header>

@@ -224,7 +224,7 @@ describe('application navigation', () => {
     restoreSession(authenticatedUser)
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
     render(<AppRouter />)
-    await screen.findByRole('heading', { name: 'Your tickets' })
+    await screen.findByRole('heading', { name: 'My tickets' })
     expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('[aria-current="page"]')).toHaveTextContent('My Tickets')
   })
 
@@ -238,6 +238,29 @@ describe('application navigation', () => {
     expect(drawer).toBeInTheDocument()
     fireEvent.click(within(drawer).getByRole('link', { name: 'My Tickets' }))
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Navigation menu' })).not.toBeInTheDocument())
+    expect(menuButton).toHaveFocus()
+  })
+
+  it('traps focus and locks page scrolling while the mobile drawer is open', async () => {
+    restoreSession(authenticatedUser)
+    render(<AppRouter />)
+    await screen.findByRole('heading', { name: 'Welcome, Alex.' })
+    const menuButton = screen.getByRole('button', { name: 'Open navigation menu' })
+    fireEvent.click(menuButton)
+    const drawer = screen.getByRole('dialog', { name: 'Navigation menu' })
+    const firstControl = within(drawer).getByRole('link', { name: 'ResolveDesk' })
+    const lastControl = within(drawer).getByRole('button', { name: 'Log out Alex' })
+
+    expect(document.body.style.overflow).toBe('hidden')
+    lastControl.focus()
+    fireEvent.keyDown(lastControl, { key: 'Tab' })
+    expect(firstControl).toHaveFocus()
+    fireEvent.keyDown(firstControl, { key: 'Tab', shiftKey: true })
+    expect(lastControl).toHaveFocus()
+
+    fireEvent.keyDown(drawer, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Navigation menu' })).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe('')
     expect(menuButton).toHaveFocus()
   })
 })
@@ -335,8 +358,9 @@ describe('customer ticket workspace', () => {
     restoreCustomerSession()
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [ticket], page: 0, size: 20, totalElements: 1, totalPages: 1, first: true, last: true }))
     render(<AppRouter />)
-    expect(await screen.findByRole('heading', { name: 'Your tickets' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'My tickets' })).toBeInTheDocument()
     expect(await screen.findAllByRole('link', { name: /SUP-42/ })).toHaveLength(2)
+    expect(screen.getByRole('columnheader', { name: 'Last activity' })).toBeInTheDocument()
     expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?page=0&size=20&sort=updatedAt%2Cdesc', expect.objectContaining({ credentials: 'include' }))
   })
 
@@ -344,7 +368,8 @@ describe('customer ticket workspace', () => {
     restoreCustomerSession()
     fetchMock.mockResolvedValueOnce(jsonResponse({ content: [], page: 0, size: 20, totalElements: 0, totalPages: 0, first: true, last: true }))
     render(<AppRouter />)
-    expect(await screen.findByText('You have not created any tickets yet.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No tickets yet' })).toBeInTheDocument()
+    expect(screen.getByText(/You have not created any tickets yet/)).toBeInTheDocument()
   })
 
   it('renders ticket details and their activity history', async () => {
@@ -356,7 +381,7 @@ describe('customer ticket workspace', () => {
     render(<AppRouter />)
     expect(await screen.findByRole('heading', { name: 'Cannot sign in' })).toBeInTheDocument()
     expect(screen.getByText('I cannot sign in to my ResolveDesk account.')).toBeInTheDocument()
-    expect(screen.getByText('Ticket Created')).toBeInTheDocument()
+    expect(screen.getByText('Ticket created')).toBeInTheDocument()
     expect(screen.getByText(/By Alex Morgan/)).toBeInTheDocument()
   })
 
@@ -407,7 +432,6 @@ describe('agent ticket queue', () => {
     expect(await screen.findByRole('table')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('Maria Garcia')).toBeInTheDocument()
     expect(within(screen.getByRole('table')).getByText('Platform Support')).toBeInTheDocument()
-    expect(screen.getByText(/Team: Platform Support/)).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/agents', expect.objectContaining({ credentials: 'include' }))
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams', expect.objectContaining({ credentials: 'include' }))
     expect(screen.getByRole('option', { name: 'All teams' })).toBeInTheDocument()
@@ -438,6 +462,12 @@ describe('agent ticket queue', () => {
     fireEvent.change(screen.getByLabelText('Sort'), { target: { value: 'title,asc' } })
     fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }))
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/tickets?status=OPEN&priority=HIGH&assignedAgentId=8&teamId=3&search=SUP-42&page=0&sort=title%2Casc', expect.objectContaining({ credentials: 'include' })))
+    const appliedFilters = screen.getByRole('region', { name: 'Applied queue filters' })
+    expect(within(appliedFilters).getByText('Status: Open')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Priority: High')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Team: Platform Support')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Assignee: Maria Garcia')).toBeInTheDocument()
+    expect(within(appliedFilters).getByText('Search: SUP-42')).toBeInTheDocument()
   })
 
   it('submits the unrouted filter without a specific team', async () => {
@@ -675,8 +705,8 @@ describe('ticket assignment and lifecycle controls', () => {
     const teamHistory = [{ id: 701, eventType: 'TEAM_CHANGED' as const, fieldName: 'assignedTeam', oldValue: '2', newValue: '3', oldDisplayValue: 'Technical', newDisplayValue: 'Billing', actor: { id: 8, displayName: 'Maria Garcia' }, createdAt: '2026-09-29T10:01:00Z' }]
     mockTicketDetailRequests({ ticketResponses: [routedTicket], historyResponses: [teamHistory], requestResponses: { 'GET /api/v1/agents?teamId=3': reply(agents) } })
     render(<AppRouter />)
-    expect(await screen.findByText('changed the assigned team')).toBeInTheDocument()
-    expect(screen.getByText('Technical → Billing')).toBeInTheDocument()
+    expect(await screen.findByText('Team changed')).toBeInTheDocument()
+    expect(within(screen.getByRole('heading', { name: 'Activity' }).parentElement!).getByText('Technical')).toBeInTheDocument()
     expect(screen.getAllByText('Billing')).not.toHaveLength(0)
   })
 
@@ -752,6 +782,7 @@ describe('ticket conversation', () => {
     expect(await screen.findByRole('heading', { name: 'Conversation' })).toBeInTheDocument()
     expect(screen.getByText('I am investigating this issue.')).toBeInTheDocument()
     expect(screen.getByText('Agent')).toBeInTheDocument()
+    expect(screen.getByText('Staff reply')).toBeInTheDocument()
     expect(screen.getByLabelText('Add a comment')).toBeInTheDocument()
   })
 
@@ -761,7 +792,7 @@ describe('ticket conversation', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(createdHistory))
     fetchMock.mockResolvedValueOnce(jsonResponse(emptyComments))
     render(<AppRouter />)
-    expect(await screen.findByText('No comments have been added yet.')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'No conversation yet' })).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText('Add a comment'), { target: { value: '   ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add comment' }))
     expect(await screen.findByText('Comment content is required.')).toBeInTheDocument()
@@ -921,6 +952,8 @@ describe('user administration', () => {
     expect(within(table).getByText('Maria Garcia')).toBeInTheDocument()
     expect(within(table).getAllByText('Administrator')).not.toHaveLength(0)
     expect(within(table).getAllByText('Active')).not.toHaveLength(0)
+    expect(within(table).getByText('Can manage users and operational settings.')).toBeInTheDocument()
+    expect(within(table).getAllByText('Can sign in and use their permitted workspace.')).not.toHaveLength(0)
     fireEvent.click(screen.getByRole('button', { name: 'Next' }))
     await waitFor(() => expect(fetchMock).toHaveBeenLastCalledWith('/api/v1/users?page=1&sort=createdAt%2Cdesc', expect.objectContaining({ credentials: 'include' })))
     fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'AGENT' } })
@@ -974,6 +1007,32 @@ describe('user administration', () => {
     fireEvent.click(within(confirmation).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(fetchMock).not.toHaveBeenCalledWith('/api/v1/users/8/active', expect.anything())
+  })
+
+  it('traps focus, supports Escape, and restores scrolling for account deactivation confirmation', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(managedUsers))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    const deactivateButton = within(table).getAllByRole('button', { name: 'Deactivate' })[1]
+    deactivateButton.focus()
+    fireEvent.click(deactivateButton)
+    const dialog = await screen.findByRole('alertdialog', { name: 'Deactivate Maria Garcia?' })
+    const cancelButton = within(dialog).getByRole('button', { name: 'Cancel' })
+    const confirmButton = within(dialog).getByRole('button', { name: 'Deactivate account' })
+
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(cancelButton).toHaveFocus()
+    confirmButton.focus()
+    fireEvent.keyDown(confirmButton, { key: 'Tab' })
+    expect(cancelButton).toHaveFocus()
+    fireEvent.keyDown(cancelButton, { key: 'Tab', shiftKey: true })
+    expect(confirmButton).toHaveFocus()
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe('')
+    await waitFor(() => expect(deactivateButton).toHaveFocus())
   })
 
   it('displays final-administrator and assigned-agent business conflicts', async () => {
@@ -1043,6 +1102,8 @@ describe('team administration', () => {
     expect(within(table).getByText('Legacy Support')).toBeInTheDocument()
     expect(within(table).getByText('Active')).toBeInTheDocument()
     expect(within(table).getByText('Inactive')).toBeInTheDocument()
+    expect(within(table).getByText('Available for new ticket routing.')).toBeInTheDocument()
+    expect(within(table).getByText('Inactive and unavailable for new routing.')).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams?includeInactive=true', expect.objectContaining({ credentials: 'include' }))
     expect(screen.getByRole('navigation', { name: 'Primary navigation' }).querySelector('[aria-current="page"]')).toHaveTextContent('Team Administration')
   })
@@ -1115,6 +1176,30 @@ describe('team administration', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate team' }))
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/v1/teams/3/active', expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ active: false }) })))
     expect(await within(screen.getByRole('table')).findByRole('button', { name: 'Reactivate Billing' })).toBeInTheDocument()
+  })
+
+  it('traps focus, supports Escape, and restores scrolling for team deactivation confirmation', async () => {
+    restoreAdminSession()
+    fetchMock.mockResolvedValueOnce(jsonResponse(teams))
+    render(<AppRouter />)
+    const table = await screen.findByRole('table')
+    const deactivateButton = within(table).getByRole('button', { name: 'Deactivate Billing' })
+    deactivateButton.focus()
+    fireEvent.click(deactivateButton)
+    const dialog = await screen.findByRole('alertdialog', { name: 'Deactivate Billing?' })
+    const cancelButton = within(dialog).getByRole('button', { name: 'Cancel' })
+    const confirmButton = within(dialog).getByRole('button', { name: 'Deactivate team' })
+
+    expect(document.body.style.overflow).toBe('hidden')
+    expect(cancelButton).toHaveFocus()
+    confirmButton.focus()
+    fireEvent.keyDown(confirmButton, { key: 'Tab' })
+    expect(cancelButton).toHaveFocus()
+
+    fireEvent.keyDown(dialog, { key: 'Escape' })
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument())
+    expect(document.body.style.overflow).toBe('')
+    await waitFor(() => expect(deactivateButton).toHaveFocus())
   })
 
   it('reactivates an inactive team and refreshes the team list', async () => {
